@@ -11,7 +11,6 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from '@/hooks/use-toast';
 import { BUDGET_CATEGORIES } from '@/lib/crm-types';
 import { formatCurrency } from '@/lib/crm-utils';
@@ -120,20 +119,20 @@ function CreateEventDialog({ open, onClose, onCreate }: { open: boolean; onClose
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-[100vw] sm:max-w-[95vw] sm:max-w-3xl h-[100dvh] sm:h-auto sm:max-h-[85vh] overflow-hidden flex flex-col crm-dialog-enter crm-dialog-glow p-2 sm:p-6 gap-2 sm:gap-4">
-        <DialogHeader>
+        <DialogHeader className="shrink-0 pr-10 sm:pr-8">
           <DialogTitle className="flex items-center gap-2 text-base sm:text-lg"><Plus className="h-5 w-5 text-[#E4002B]" />Новое мероприятие</DialogTitle>
           <DialogDescription className="text-xs sm:text-sm">Заполните данные карточки мероприятия. Основные поля обязательны.</DialogDescription>
         </DialogHeader>
 
-        <Tabs value={createTab} onValueChange={setCreateTab} className="flex-1 overflow-hidden">
-          <TabsList className="flex flex-nowrap overflow-x-auto crm-scroll h-auto gap-1">
+        <Tabs value={createTab} onValueChange={setCreateTab} className="min-h-0 flex-1 overflow-hidden">
+          <TabsList className="shrink-0 flex flex-nowrap overflow-x-auto crm-scroll h-auto gap-1">
             <TabsTrigger value="main" className="text-xs whitespace-nowrap">Основное</TabsTrigger>
             <TabsTrigger value="speakers" className="text-xs whitespace-nowrap">Спикеры {form.speakers.length > 0 && <Badge variant="secondary" className="ml-1 text-[10px] h-4 px-1">{form.speakers.length}</Badge>}</TabsTrigger>
             <TabsTrigger value="budget" className="text-xs whitespace-nowrap">Бюджет {form.budgetItems.length > 0 && <Badge variant="secondary" className="ml-1 text-[10px] h-4 px-1">{form.budgetItems.length}</Badge>}</TabsTrigger>
             <TabsTrigger value="contacts" className="text-xs whitespace-nowrap">Контакты {form.contacts.length > 0 && <Badge variant="secondary" className="ml-1 text-[10px] h-4 px-1">{form.contacts.length}</Badge>}</TabsTrigger>
           </TabsList>
 
-          <ScrollArea className="flex-1 mt-4">
+          <div className="min-h-0 flex-1 mt-2 sm:mt-4 pr-3 overflow-y-auto crm-scroll">
             <TabsContent value="main" className="space-y-4 mt-0">
               <div>
                 <Label className="text-sm font-medium">Наименование мероприятия *</Label>
@@ -280,10 +279,10 @@ function CreateEventDialog({ open, onClose, onCreate }: { open: boolean; onClose
                 </div>
               )}
             </TabsContent>
-          </ScrollArea>
+          </div>
         </Tabs>
 
-        <DialogFooter className="border-t pt-4">
+        <DialogFooter className="shrink-0 border-t pt-3 sm:pt-4">
           <Button variant="outline" onClick={onClose}>Отмена</Button>
           <Button onClick={handleCreate} className="bg-[#E4002B] hover:bg-[#BD0024] crm-btn-hover gap-1.5"><Plus className="h-4 w-4" />Создать</Button>
         </DialogFooter>
