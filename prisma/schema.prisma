@@ -1,0 +1,327 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String
+  passwordHash  String
+  role          String   @default("employee") // admin, manager, employee
+  department    String?  // methodology, coordination, agd, organization, analytics
+  avatarUrl     String?
+  isActive      Boolean  @default(true)
+  isApproved    Boolean  @default(false) // Требуется одобрение администратора
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  assignedTasks   TaskAssignment[]
+  eventAssignments EventAssignment[]
+  auditLogs       AuditLog[]
+  sessions        Session[]
+}
+
+model Event {
+  id          String   @id @default(cuid())
+  uin         String?  @unique
+  title       String
+  status      String   @default("draft")
+
+  // Основная информация (Методология)
+  programDirector   String?
+  coOrganizers      String?
+  startDate         DateTime?
+  endDate           DateTime?
+  participantCount  Int?
+  totalParticipants Int?
+  venue             String?
+  campus            String?
+  budget            Float?
+  fundingSource     String?
+  program           String?   // Программа мероприятия (текст)
+  eventPlan         String?   // Примерный план мероприятия (текст)
+  hasProgram        Boolean  @default(false)  // Есть программа
+  hasPlan           Boolean  @default(false)  // Есть план
+  targetAudience    String?
+  customerName      String?
+  contractorName    String?
+
+  // Поля из сервиса организации
+  number          Int?
+  client          String?
+  programClass    String?  // A, B, C
+  quarter         String?
+  plannedDates    String?
+  programType     String?  // Модульная, Форум, Семинар, Мероприятие, Постсопровождение
+  coOrganizer     String?
+  finance         String?
+  comments        String?
+  tags            String?  // Comma-separated
+  isFavorite      Boolean  @default(false)
+
+  // Дополнительные сведения
+  needProgramHelp   Boolean  @default(false)
+  needTeamBuilding  Boolean  @default(false)
+  needEntertainment Boolean  @default(false)
+  programHelpDesc   String?
+  teamBuildingDesc  String?
+  entertainmentDesc String?
+
+  // Застройка
+  setupStartDate    DateTime?
+  setupEndDate      DateTime?
+  teardownStartDate DateTime?
+  teardownEndDate   DateTime?
+  setupDescription  String?
+
+  // АГД поля
+  vipGuests         String?
+  calendarAdded     Boolean  @default(false)
+
+  // Аналитика
+  npsScore          Float?
+  actualCost        Float?
+  analyticalReport  String?  // Аналитический отчет (текст/JSON)
+
+  // Согласование (Координация)
+  budgetApproved    Boolean  @default(false)
+  budgetApprovedBy  String?
+  budgetApprovedAt  DateTime?
+  coordinatorComment String?
+
+  // Согласование фактического бюджета (Координация)
+  actualBudgetApproved    Boolean  @default(false)
+  actualBudgetApprovedBy  String?
+  actualBudgetApprovedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  speakers        Speaker[]
+  budgetItems     BudgetItem[]
+  tasks           Task[]
+  contacts        Contact[]
+  rooms           RoomBooking[]
+  meals           Meal[]
+  transfers       Transfer[]
+  accommodations  Accommodation[]
+  notifications   Notification[]
+  changeLogs      ChangeLog[]
+  payments        Payment[]
+  assignments     EventAssignment[]
+}
+
+model Speaker {
+  id          String   @id @default(cuid())
+  eventId     String
+  fullName    String
+  topic       String?
+  cost        Float?
+  description String?
+  photoUrl    String?  // Фото спикера
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+}
+
+model BudgetItem {
+  id                 String   @id @default(cuid())
+  eventId            String
+  category           String
+  description        String
+  plannedAmount      Float
+  actualAmount       Float?
+  originalAmount     Float?   // Исходная плановая сумма (до корректировки)
+  correctedAmount    Float?   // Скорректированная сумма (Координация)
+  correctedBy        String?  // Кто скорректировал
+  correctionComment  String?  // Причина корректировки
+  status             String   @default("planned")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  event              Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+}
+
+model Task {
+  id          String   @id @default(cuid())
+  eventId     String
+  category    String
+  title       String
+  description String?
+  assignee    String?
+  dueDate     DateTime?
+  completed   Boolean  @default(false)
+  checklist   String?
+  priority    String   @default("medium")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  assignments TaskAssignment[]
+}
+
+model TaskAssignment {
+  id          String   @id @default(cuid())
+  taskId      String
+  userId      String
+  assignedBy  String?  // User ID who assigned
+  createdAt   DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Contact {
+  id        String   @id @default(cuid())
+  eventId   String
+  role      String
+  fullName  String
+  phone     String?
+  email     String?
+  type      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+}
+
+model RoomBooking {
+  id        String   @id @default(cuid())
+  eventId   String
+  roomName  String
+  dateFrom  String?
+  dateTo    String?
+  timeFrom  String?
+  timeTo    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+}
+
+model Meal {
+  id        String   @id @default(cuid())
+  eventId   String
+  date      String?
+  time      String?
+  location  String?
+  mealType  String?
+  level     String?
+  headcount Int?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+}
+
+model Transfer {
+  id          String   @id @default(cuid())
+  eventId     String
+  date        String?
+  time        String?
+  from        String?
+  to          String?
+  vehicleType String?
+  headcount   Int?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+}
+
+model Accommodation {
+  id        String   @id @default(cuid())
+  eventId   String
+  roomType  String?
+  count     Int?
+  checkIn   String?
+  checkOut  String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  eventId   String
+  department String
+  message   String
+  type      String   @default("info")
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+}
+
+model ChangeLog {
+  id        String   @id @default(cuid())
+  eventId   String
+  field     String
+  oldValue  String?
+  newValue  String?
+  changedBy String?
+  createdAt DateTime @default(now())
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+}
+
+model Payment {
+  id            String   @id @default(cuid())
+  eventId       String
+  contractor    String
+  description   String
+  amount        Float
+  status        String   @default("pending")
+  dueDate       DateTime?
+  paidDate      DateTime?
+  paidAmount    Float?
+  invoiceNumber String?
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  event         Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+}
+
+model EventAssignment {
+  id                 String   @id @default(cuid())
+  eventId            String
+  userId             String
+  role               String   // LEAD, SUPPORT
+  responsibilityZone String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId, role])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  action     String   // CREATED, UPDATED, DELETED, ASSIGNED, UNASSIGNED
+  entityType String   // EVENT, USER, ASSIGNMENT, TASK
+  entityId   String
+  details    String?  // JSON string
+  userId     String?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Settings {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}

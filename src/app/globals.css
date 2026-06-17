@@ -1,0 +1,1406 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'Fira Code', 'Cascadia Code', 'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --breakpoint-xs: 475px;
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.507 0.214 25.5);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.507 0.214 25.5);
+  --chart-2: oklch(0.32 0.15 270);
+  --chart-3: oklch(0.78 0.1 10);
+  --chart-4: oklch(0.73 0.08 270);
+  --chart-5: oklch(0.425 0.189 24);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.507 0.214 25.5);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+
+  /* Senezh brand design system */
+  --font-golos: 'Inter', system-ui, -apple-system, sans-serif;
+  --senezh-red: #E4002B;
+  --senezh-red-dark: #BD0024;
+  --senezh-blue: #164194;
+  --senezh-blue-dark: #190B62;
+  --senezh-light-red: #FF9DAF;
+  --senezh-light-blue: #A8B5F5;
+  --senezh-gray: #C0C0C0;
+  --senezh-light-gray: #EEEEEE;
+  --senezh-black: #191919;
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.6 0.22 25.5);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.6 0.22 25.5);
+  --chart-2: oklch(0.5 0.16 270);
+  --chart-3: oklch(0.78 0.1 10);
+  --chart-4: oklch(0.73 0.08 270);
+  --chart-5: oklch(0.55 0.2 24);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.6 0.22 25.5);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  /* Smooth theme transition */
+  html {
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+
+  /* Smooth transitions for all interactive elements */
+  a, button, [role="button"], summary, [tabindex] {
+    transition: all 0.2s ease;
+  }
+
+  /* Focus-visible ring for accessibility */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  /* Consistent input heights */
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="tel"],
+  input[type="url"],
+  input[type="search"],
+  select,
+  textarea {
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  /* Selection color using brand */
+  ::selection {
+    background: rgba(228, 0, 43, 0.15);
+    color: inherit;
+  }
+  .dark ::selection {
+    background: rgba(228, 0, 43, 0.3);
+  }
+}
+
+/* ============================================================
+   Global Scrollbar Styling — Enhanced
+   ============================================================ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #c4c8cc transparent;
+}
+.dark * {
+  scrollbar-color: #4b5563 transparent;
+}
+*::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #c4c8cc;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+  background-clip: content-box;
+}
+.dark *::-webkit-scrollbar-thumb {
+  background: #4b5563;
+  background-clip: content-box;
+}
+.dark *::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+  background-clip: content-box;
+}
+/* Scrollbar corner (for both axes) */
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ============================================================
+   CRM Custom Styles — Senezh Brand Design System
+   ============================================================ */
+@layer components {
+
+  /* ── Gradient header ── */
+  .crm-gradient-header {
+    background: linear-gradient(135deg, #E4002B 0%, #BD0024 50%, #164194 100%);
+  }
+
+  /* ── Gradient card ── */
+  .crm-gradient-card {
+    background: linear-gradient(135deg, rgba(228, 0, 43, 0.04) 0%, rgba(22, 65, 148, 0.02) 100%);
+  }
+
+  /* ── Sidebar item ── */
+  .crm-sidebar-item {
+    position: relative;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .crm-sidebar-item.active {
+    background: linear-gradient(90deg, rgba(228, 0, 43, 0.12) 0%, rgba(228, 0, 43, 0.04) 100%);
+  }
+
+  /* Animated left border for active sidebar item */
+  .crm-sidebar-item.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 0;
+    background: linear-gradient(180deg, #E4002B, #BD0024);
+    border-radius: 0 3px 3px 0;
+    animation: crmSideBorderGrow 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+
+  @keyframes crmSideBorderGrow {
+    from { height: 0; opacity: 0; }
+    to { height: 60%; opacity: 1; }
+  }
+
+  .crm-sidebar-item:not(.active):hover {
+    background: rgba(0, 0, 0, 0.04);
+  }
+
+  /* ── Sidebar background pattern ── */
+  .crm-sidebar-bg {
+    background-image: radial-gradient(circle at 1px 1px, rgba(228, 0, 43, 0.04) 1px, transparent 0);
+    background-size: 20px 20px;
+  }
+
+  /* ── Event card ── */
+  .crm-event-card {
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    border-left: 4px solid transparent;
+    position: relative;
+  }
+
+  .crm-event-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    transform: translateY(-1px) scale(1.005);
+  }
+
+  /* Hidden metadata revealed on hover */
+  .crm-event-card .crm-event-meta-hidden {
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease, opacity 0.2s ease, margin 0.3s ease;
+    margin-top: 0;
+  }
+
+  .crm-event-card:hover .crm-event-meta-hidden {
+    max-height: 40px;
+    opacity: 1;
+    margin-top: 8px;
+  }
+
+  /* ── Stat card with dot pattern ── */
+  .crm-stat-card {
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Dot pattern on stat cards */
+  .crm-stat-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(circle at 2px 2px, rgba(228, 0, 43, 0.06) 1px, transparent 0);
+    background-size: 16px 16px;
+    pointer-events: none;
+    opacity: 0.7;
+  }
+
+  .crm-stat-card::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -20%;
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    opacity: 0.06;
+  }
+
+  .crm-stat-card.emerald::after { background: #E4002B; }
+  .crm-stat-card.amber::after { background: #f59e0b; }
+  .crm-stat-card.blue::after { background: #164194; }
+  .crm-stat-card.green::after { background: #22c55e; }
+  .crm-stat-card.red::after { background: #BD0024; }
+
+  /* ── Calendar cells ── */
+  .crm-calendar-cell {
+    transition: all 0.15s ease;
+  }
+
+  .crm-calendar-cell:hover {
+    background: rgba(228, 0, 43, 0.06);
+  }
+
+  .crm-calendar-cell.today {
+    background: rgba(228, 0, 43, 0.08);
+    border-color: #E4002B;
+  }
+
+  .crm-calendar-cell.selected {
+    ring: 2px;
+    ring-color: #E4002B;
+    background: rgba(228, 0, 43, 0.04);
+  }
+
+  /* ── Progress bar ── */
+  .crm-progress-bar {
+    background: linear-gradient(90deg, #E4002B, #BD0024);
+    transition: width 0.5s ease;
+  }
+
+  /* ── Badge ── */
+  .crm-badge {
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+
+  /* ── Fade-in animation ── */
+  .crm-fade-in {
+    animation: crmFadeIn 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  @keyframes crmFadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Slide-in animation ── */
+  .crm-slide-in {
+    animation: crmSlideIn 0.3s ease;
+  }
+
+  @keyframes crmSlideIn {
+    from { opacity: 0; transform: translateX(-12px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  /* ── View transition (dept switch) ── */
+  .crm-view-transition {
+    animation: crmViewEnter 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  @keyframes crmViewEnter {
+    from {
+      opacity: 0;
+      transform: translateY(12px) scale(0.99);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  /* ── Custom scrollbar ── */
+  .crm-scroll::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .crm-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .crm-scroll::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 3px;
+  }
+
+  .crm-scroll::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
+  }
+
+  /* Ensure scroll containers work on mobile and desktop */
+  .crm-scroll {
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+  }
+
+  /* Fix for flex containers with overflow */
+  .crm-scroll.min-h-0 {
+    min-height: 0;
+  }
+
+  /* ── Table row styling ── */
+  .crm-table-row {
+    transition: background-color 0.15s ease;
+  }
+
+  .crm-table-row:hover {
+    background-color: rgba(228, 0, 43, 0.04);
+  }
+
+  /* ── Print styles ── */
+  @media print {
+    .no-print { display: none !important; }
+    .crm-event-card { break-inside: avoid; }
+    body { font-size: 11pt; }
+    .shadow-sm { box-shadow: none !important; }
+  }
+
+  /* ── Main content gradient border ── */
+  .crm-main-content {
+    position: relative;
+  }
+
+  .crm-main-content::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: linear-gradient(to bottom, transparent, #E4002B, #BD0024, transparent);
+    opacity: 0.3;
+  }
+
+  /* ── Welcome banner with animated gradient border ── */
+  .crm-welcome-banner {
+    position: relative;
+  }
+
+  .crm-welcome-banner::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 20px,
+      rgba(255, 255, 255, 0.03) 20px,
+      rgba(255, 255, 255, 0.03) 40px
+    );
+    pointer-events: none;
+    border-radius: inherit;
+  }
+
+  /* Animated gradient border around the banner */
+  .crm-welcome-border {
+    padding: 2px;
+    border-radius: 18px;
+    background: linear-gradient(135deg, #E4002B, #BD0024, #164194, #190B62, #E4002B);
+    background-size: 300% 300%;
+    animation: crmBorderGradient 4s ease infinite;
+  }
+
+  @keyframes crmBorderGradient {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+
+  .crm-welcome-border > div {
+    border-radius: 16px;
+  }
+
+  /* ── Pulse animation for pending approval button ── */
+  .crm-pulse-btn {
+    animation: crmPulse 2s ease-in-out infinite;
+  }
+
+  @keyframes crmPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(228, 0, 43, 0); }
+    50% { box-shadow: 0 0 0 6px rgba(228, 0, 43, 0.2); }
+  }
+
+  /* ── Gantt timeline ── */
+  .crm-gantt-bar {
+    transition: all 0.2s ease;
+    cursor: pointer;
+  }
+
+  .crm-gantt-bar:hover {
+    opacity: 1 !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    transform: scaleY(1.15);
+  }
+
+  /* ── Pipeline connector with animated flow ── */
+  .crm-pipeline-connector {
+    flex: 1;
+    height: 2px;
+    min-width: 16px;
+    position: relative;
+    overflow: hidden;
+    transition: background-color 0.3s ease;
+  }
+
+  .crm-pipeline-connector.active::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -30%;
+    width: 30%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(228, 0, 43, 0.8), transparent);
+    animation: crmFlowPulse 2s ease-in-out infinite;
+  }
+
+  @keyframes crmFlowPulse {
+    0% { left: -30%; }
+    100% { left: 100%; }
+  }
+
+  /* ── Comment animation ── */
+  .crm-comment-enter {
+    animation: crmCommentSlide 0.3s ease;
+  }
+
+  @keyframes crmCommentSlide {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Validation shake ── */
+  .crm-shake {
+    animation: crmShake 0.4s ease;
+  }
+
+  @keyframes crmShake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-4px); }
+    75% { transform: translateX(4px); }
+  }
+
+  /* ── Glassmorphism card ── */
+  .crm-glass-card {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+  }
+
+  .dark .crm-glass-card {
+    background: rgba(30, 30, 30, 0.75);
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+
+  /* ── Shimmer loading ── */
+  .crm-shimmer {
+    background: linear-gradient(90deg, transparent 0%, rgba(228, 0, 43, 0.06) 50%, transparent 100%);
+    background-size: 200% 100%;
+    animation: crmShimmer 1.5s ease infinite;
+  }
+
+  @keyframes crmShimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* ── Skeleton loading ── */
+  .crm-skeleton {
+    position: relative;
+    overflow: hidden;
+    background: #e5e7eb;
+    border-radius: 8px;
+  }
+
+  .crm-skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.5) 50%, transparent 100%);
+    background-size: 200% 100%;
+    animation: crmSkeletonWave 1.8s ease-in-out infinite;
+  }
+
+  @keyframes crmSkeletonWave {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  .dark .crm-skeleton {
+    background: #374151;
+  }
+
+  .dark .crm-skeleton::after {
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.08) 50%, transparent 100%);
+    background-size: 200% 100%;
+  }
+
+  /* ── Floating action button ── */
+  .crm-fab {
+    box-shadow: 0 4px 14px rgba(228, 0, 43, 0.35);
+    transition: all 0.2s ease;
+  }
+
+  .crm-fab:hover {
+    box-shadow: 0 6px 20px rgba(228, 0, 43, 0.45);
+    transform: translateY(-2px);
+  }
+
+  .crm-fab:active {
+    transform: translateY(0);
+  }
+
+  /* ── Progress ring ── */
+  .crm-progress-ring circle {
+    transition: stroke-dashoffset 0.5s ease;
+  }
+
+  /* ── Kanban card ── */
+  .crm-kanban-card {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .crm-kanban-card:hover {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+  }
+
+  .crm-kanban-card:active {
+    transform: translateY(0);
+  }
+
+  /* ── Status dot pulse ── */
+  .crm-status-dot-pulse {
+    position: relative;
+  }
+
+  .crm-status-dot-pulse::after {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: 50%;
+    animation: crmDotPulse 2s ease-in-out infinite;
+  }
+
+  @keyframes crmDotPulse {
+    0%, 100% { opacity: 0; transform: scale(1); }
+    50% { opacity: 0.3; transform: scale(1.5); }
+  }
+
+  /* ── Command palette overlay ── */
+  .crm-command-overlay {
+    animation: crmOverlayIn 0.15s ease;
+  }
+
+  @keyframes crmOverlayIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  /* ── Gradient text ── */
+  .crm-gradient-text {
+    background: linear-gradient(135deg, #E4002B, #164194);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* ── Table row accent ── */
+  .crm-table-row-accent:hover {
+    background-color: rgba(228, 0, 43, 0.04);
+    border-left: 2px solid #E4002B;
+  }
+
+  /* ── Stat number tabular ── */
+  .crm-stat-number {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+
+  /* ── Count-up animation ── */
+  .crm-count-up {
+    animation: crmCountUp 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+
+  @keyframes crmCountUp {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* ── Custom focus ring ── */
+  .crm-focus-ring:focus-visible {
+    outline: 2px solid #E4002B;
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* ── Dialog open/close animation ── */
+  .crm-dialog-enter {
+    animation: crmDialogOpen 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+
+  @keyframes crmDialogOpen {
+    from {
+      opacity: 0;
+      transform: scale(0.95) translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+
+  .crm-dialog-overlay {
+    animation: crmDialogOverlay 0.2s ease forwards;
+  }
+
+  @keyframes crmDialogOverlay {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  /* ── Dialog glow/shadow ── */
+  .crm-dialog-glow {
+    box-shadow:
+      0 0 0 1px rgba(228, 0, 43, 0.1),
+      0 4px 24px rgba(0, 0, 0, 0.12),
+      0 12px 48px rgba(228, 0, 43, 0.06);
+  }
+
+  /* ── Mobile dialog fixes ── */
+  @media (max-width: 639px) {
+    .crm-dialog-glow {
+      box-shadow: none;
+      border-radius: 0;
+    }
+    /* Ensure dialog content scrolls properly on mobile */
+    [data-slot="dialog-content"] {
+      -webkit-overflow-scrolling: touch;
+    }
+    /* Make close button more accessible on mobile */
+    [data-slot="dialog-close"] {
+      min-width: 44px;
+      min-height: 44px;
+    }
+  }
+
+  /* ── Tab bar animated indicator ── */
+  .crm-tab-bar {
+    position: relative;
+  }
+
+  .crm-tab-indicator {
+    position: absolute;
+    bottom: 0;
+    height: 2px;
+    background: linear-gradient(90deg, #E4002B, #BD0024);
+    border-radius: 2px 2px 0 0;
+    transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* ── Layered card shadows ── */
+  .crm-shadow-elevated {
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.04),
+      0 4px 8px rgba(0, 0, 0, 0.04),
+      0 8px 24px rgba(0, 0, 0, 0.06);
+    transition: box-shadow 0.25s ease, transform 0.25s ease;
+  }
+
+  .crm-shadow-elevated:hover {
+    box-shadow:
+      0 2px 4px rgba(0, 0, 0, 0.04),
+      0 8px 16px rgba(0, 0, 0, 0.06),
+      0 16px 40px rgba(0, 0, 0, 0.08);
+  }
+
+  /* ── Button hover scale ── */
+  .crm-btn-hover {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .crm-btn-hover:hover {
+    transform: scale(1.03);
+  }
+
+  .crm-btn-hover:active {
+    transform: scale(0.98);
+  }
+
+  /* ── Priority indicator ── */
+  .crm-priority-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .crm-priority-dot.high { background: #ef4444; box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2); }
+  .crm-priority-dot.medium { background: #f59e0b; box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2); }
+  .crm-priority-dot.low { background: #22c55e; box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2); }
+
+  /* ── Participant avatars row ── */
+  .crm-avatar-row {
+    display: flex;
+    align-items: center;
+  }
+
+  .crm-avatar-row > * {
+    margin-left: -4px;
+    transition: transform 0.15s ease;
+  }
+
+  .crm-avatar-row > *:first-child {
+    margin-left: 0;
+  }
+
+  .crm-avatar-row > *:hover {
+    transform: scale(1.2);
+    z-index: 10;
+  }
+
+  /* ── Weather icon animation ── */
+  .crm-weather-icon {
+    animation: crmWeatherFloat 3s ease-in-out infinite;
+  }
+
+  @keyframes crmWeatherFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-2px); }
+  }
+
+  /* ── Pipeline step animation ── */
+  .crm-pipeline-step {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .crm-pipeline-step.has-items {
+    animation: crmPipelinePop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  @keyframes crmPipelinePop {
+    from { transform: scale(0.9); }
+    to { transform: scale(1); }
+  }
+
+  /* ── Print improvements ── */
+  @media print {
+    .crm-event-card { break-inside: avoid; page-break-inside: avoid; }
+    .crm-gradient-header { background: #E4002B !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .no-print { display: none !important; }
+    body { font-size: 10pt; }
+    .shadow-sm, .shadow-md { box-shadow: none !important; }
+  }
+
+  /* ============================================================
+     Enhanced Component Styles
+     ============================================================ */
+
+  /* ── Staggered list animation ── */
+  .crm-stagger-list > * {
+    animation: crmStaggerIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) both;
+  }
+  .crm-stagger-list > *:nth-child(1) { animation-delay: 0ms; }
+  .crm-stagger-list > *:nth-child(2) { animation-delay: 50ms; }
+  .crm-stagger-list > *:nth-child(3) { animation-delay: 100ms; }
+  .crm-stagger-list > *:nth-child(4) { animation-delay: 150ms; }
+  .crm-stagger-list > *:nth-child(5) { animation-delay: 200ms; }
+  .crm-stagger-list > *:nth-child(6) { animation-delay: 250ms; }
+  .crm-stagger-list > *:nth-child(7) { animation-delay: 300ms; }
+  .crm-stagger-list > *:nth-child(8) { animation-delay: 350ms; }
+  .crm-stagger-list > *:nth-child(9) { animation-delay: 400ms; }
+  .crm-stagger-list > *:nth-child(10) { animation-delay: 450ms; }
+
+  @keyframes crmStaggerIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Spinner animation for buttons ── */
+  .crm-spinner {
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: crmSpin 0.6s linear infinite;
+  }
+
+  @keyframes crmSpin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* ── Page transition ── */
+  .crm-page-enter {
+    animation: crmPageIn 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  @keyframes crmPageIn {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Striped table rows ── */
+  .crm-table-striped tbody tr:nth-child(even) {
+    background-color: rgba(0, 0, 0, 0.02);
+  }
+  .dark .crm-table-striped tbody tr:nth-child(even) {
+    background-color: rgba(255, 255, 255, 0.02);
+  }
+  .crm-table-striped tbody tr {
+    transition: background-color 0.15s ease;
+  }
+  .crm-table-striped tbody tr:hover {
+    background-color: rgba(228, 0, 43, 0.04);
+  }
+  .dark .crm-table-striped tbody tr:hover {
+    background-color: rgba(228, 0, 43, 0.08);
+  }
+
+  /* ── Sticky table header ── */
+  .crm-table-sticky thead {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--card);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  }
+
+  /* ── Card status indicator bar ── */
+  .crm-status-bar {
+    position: relative;
+    border-left: 4px solid transparent;
+  }
+  .crm-status-bar.status-draft { border-left-color: #9ca3af; }
+  .crm-status-bar.status-pending_approval { border-left-color: #f59e0b; }
+  .crm-status-bar.status-budget_approved { border-left-color: #8b5cf6; }
+  .crm-status-bar.status-approved { border-left-color: #3b82f6; }
+  .crm-status-bar.status-uin_assigned { border-left-color: #06b6d4; }
+  .crm-status-bar.status-in_progress { border-left-color: #10b981; }
+  .crm-status-bar.status-completed { border-left-color: #22c55e; }
+  .crm-status-bar.status-cancelled { border-left-color: #ef4444; }
+
+  /* ── Empty state illustration ── */
+  .crm-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem 1.5rem;
+    text-align: center;
+  }
+  .crm-empty-state-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(228, 0, 43, 0.06);
+    color: #E4002B;
+    margin-bottom: 1rem;
+  }
+  .dark .crm-empty-state-icon {
+    background: rgba(228, 0, 43, 0.15);
+    color: #FF9DAF;
+  }
+
+  /* ── Enhanced card hover ── */
+  .crm-card-hover {
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .crm-card-hover:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    transform: translateY(-2px) scale(1.01);
+  }
+  .dark .crm-card-hover:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+
+  /* ── Icon button hover ── */
+  .crm-icon-btn {
+    transition: all 0.2s ease;
+    border-radius: 8px;
+  }
+  .crm-icon-btn:hover {
+    background: rgba(0, 0, 0, 0.06);
+  }
+  .dark .crm-icon-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  /* ── Error input state ── */
+  .crm-input-error {
+    border-color: #ef4444 !important;
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.15);
+  }
+
+  /* ── Landing page hero gradient ── */
+  .crm-hero-gradient {
+    background: linear-gradient(135deg, #E4002B 0%, #BD0024 30%, #164194 70%, #0F1B47 100%);
+    position: relative;
+    overflow: hidden;
+  }
+  .crm-hero-gradient::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 35px,
+      rgba(255, 255, 255, 0.03) 35px,
+      rgba(255, 255, 255, 0.03) 70px
+    );
+    pointer-events: none;
+  }
+  .crm-hero-gradient::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -20%;
+    width: 500px;
+    height: 500px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.03);
+    pointer-events: none;
+  }
+
+  /* ── Feature card for landing ── */
+  .crm-feature-card {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 1px solid rgba(228, 0, 43, 0.08);
+  }
+  .crm-feature-card:hover {
+    border-color: rgba(228, 0, 43, 0.2);
+    box-shadow: 0 8px 24px rgba(228, 0, 43, 0.08);
+    transform: translateY(-4px);
+  }
+  .dark .crm-feature-card {
+    border-color: rgba(228, 0, 43, 0.15);
+  }
+  .dark .crm-feature-card:hover {
+    border-color: rgba(228, 0, 43, 0.3);
+    box-shadow: 0 8px 24px rgba(228, 0, 43, 0.12);
+  }
+
+  /* ── Counter animation for landing page ── */
+  .crm-counter {
+    font-variant-numeric: tabular-nums;
+  }
+  .crm-counter-animate {
+    animation: crmCounterPop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+  @keyframes crmCounterPop {
+    from { opacity: 0; transform: scale(0.5); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  /* ── Landing section fade ── */
+  .crm-section-fade {
+    animation: crmSectionFade 0.6s cubic-bezier(0.4, 0, 0.2, 1) both;
+  }
+  @keyframes crmSectionFade {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Floating particles background ── */
+  .crm-particles-bg {
+    position: relative;
+    overflow: hidden;
+  }
+  .crm-particles-bg::before {
+    content: '';
+    position: absolute;
+    width: 300px;
+    height: 300px;
+    border-radius: 50%;
+    background: rgba(228, 0, 43, 0.03);
+    top: 20%;
+    left: -5%;
+    animation: crmFloat1 8s ease-in-out infinite;
+    pointer-events: none;
+  }
+  .crm-particles-bg::after {
+    content: '';
+    position: absolute;
+    width: 200px;
+    height: 200px;
+    border-radius: 50%;
+    background: rgba(22, 65, 148, 0.03);
+    bottom: 10%;
+    right: -3%;
+    animation: crmFloat2 10s ease-in-out infinite;
+    pointer-events: none;
+  }
+  @keyframes crmFloat1 {
+    0%, 100% { transform: translate(0, 0); }
+    50% { transform: translate(30px, -20px); }
+  }
+  @keyframes crmFloat2 {
+    0%, 100% { transform: translate(0, 0); }
+    50% { transform: translate(-20px, 15px); }
+  }
+}
+
+/* ============================================================
+   Dark mode overrides — Senezh Brand
+   ============================================================ */
+.dark .crm-gradient-header {
+  background: linear-gradient(135deg, #BD0024 0%, #8B0018 50%, #0F1B47 100%);
+}
+
+.dark .crm-gradient-card {
+  background: linear-gradient(135deg, rgba(228, 0, 43, 0.08) 0%, rgba(22, 65, 148, 0.04) 100%);
+}
+
+.dark .crm-sidebar-item.active {
+  background: linear-gradient(90deg, rgba(228, 0, 43, 0.2) 0%, rgba(228, 0, 43, 0.08) 100%);
+}
+
+.dark .crm-sidebar-item.active::before {
+  background: linear-gradient(180deg, #FF9DAF, #E4002B);
+}
+
+.dark .crm-sidebar-item:not(.active):hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.dark .crm-sidebar-bg {
+  background-image: radial-gradient(circle at 1px 1px, rgba(228, 0, 43, 0.05) 1px, transparent 0);
+  background-size: 20px 20px;
+}
+
+.dark .crm-event-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.dark .crm-scroll::-webkit-scrollbar-thumb {
+  background: #4b5563;
+}
+
+.dark .crm-scroll::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
+
+.dark .crm-skeleton {
+  background: #374151;
+}
+
+.dark .crm-dialog-glow {
+  box-shadow:
+    0 0 0 1px rgba(228, 0, 43, 0.15),
+    0 4px 24px rgba(0, 0, 0, 0.3),
+    0 12px 48px rgba(228, 0, 43, 0.08);
+}
+
+.dark .crm-shadow-elevated {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.15),
+    0 4px 8px rgba(0, 0, 0, 0.1),
+    0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.dark .crm-shadow-elevated:hover {
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.15),
+    0 8px 16px rgba(0, 0, 0, 0.12),
+    0 16px 40px rgba(0, 0, 0, 0.15);
+}
+
+/* ── Focus-visible overrides for dark mode ── */
+.dark .crm-focus-ring:focus-visible {
+  outline-color: #FF9DAF;
+}
+
+/* ── Dark mode: Calendar cells ── */
+.dark .crm-calendar-cell:hover {
+  background: rgba(228, 0, 43, 0.12);
+}
+
+.dark .crm-calendar-cell.today {
+  background: rgba(228, 0, 43, 0.15);
+}
+
+/* ── Dark mode: Table rows ── */
+.dark .crm-table-row:hover {
+  background-color: rgba(228, 0, 43, 0.08);
+}
+
+.dark .crm-table-row-accent:hover {
+  background-color: rgba(228, 0, 43, 0.08);
+  border-left: 2px solid #FF9DAF;
+}
+
+/* ── Dark mode: Kanban card ── */
+.dark .crm-kanban-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+/* ── Dark mode: Gantt bar ── */
+.dark .crm-gantt-bar:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+/* ── Dark mode: Gradient text ── */
+.dark .crm-gradient-text {
+  background: linear-gradient(135deg, #FF9DAF, #A8B5F5);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Dark mode: Notification badge ── */
+.dark .crm-pulse-btn {
+  animation: crmDarkPulse 2s ease-in-out infinite;
+}
+
+@keyframes crmDarkPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(228, 0, 43, 0); }
+  50% { box-shadow: 0 0 0 6px rgba(255, 157, 175, 0.3); }
+}
+
+/* ── Dark mode: Shimmer ── */
+.dark .crm-shimmer {
+  background: linear-gradient(90deg, transparent 0%, rgba(228, 0, 43, 0.1) 50%, transparent 100%);
+  background-size: 200% 100%;
+}
+
+/* ── Dark mode: Stat card ── */
+.dark .crm-stat-card::before {
+  background-image: radial-gradient(circle at 2px 2px, rgba(228, 0, 43, 0.1) 1px, transparent 0);
+  opacity: 0.5;
+}
+
+/* ── Dark mode: Welcome border ── */
+.dark .crm-welcome-border {
+  background: linear-gradient(135deg, #BD0024, #8B0018, #0F1B47, #190B62, #BD0024);
+  background-size: 300% 300%;
+  animation: crmBorderGradient 4s ease infinite;
+}
+
+/* ── Dark mode: Main content gradient border ── */
+.dark .crm-main-content::before {
+  background: linear-gradient(to bottom, transparent, #FF9DAF, #E4002B, transparent);
+  opacity: 0.2;
+}
+
+/* ── Dark mode: Tab indicator ── */
+.dark .crm-tab-indicator {
+  background: linear-gradient(90deg, #FF9DAF, #E4002B);
+}
+
+/* ── Dark mode: Skeleton ── */
+.dark .crm-skeleton {
+  background: #374151;
+}
+
+.dark .crm-skeleton::after {
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.06) 50%, transparent 100%);
+  background-size: 200% 100%;
+}
+
+/* ============================================================
+   Global Dark Mode Utility Overrides
+   These ensure that commonly used light-only patterns work in dark mode
+   ============================================================ */
+
+/* ── Gray-50 backgrounds (use muted) ── */
+.dark .bg-gray-50:not(.dark\:bg-gray-900):not(.dark\:bg-gray-800) {
+  background-color: var(--muted);
+}
+
+/* ── Gray-100 backgrounds ── */
+.dark .bg-gray-100:not(.dark\:bg-gray-800) {
+  background-color: oklch(0.25 0 0);
+}
+
+/* ── Hover backgrounds ── */
+.dark .hover\:bg-gray-50:hover {
+  background-color: var(--muted);
+}
+
+.dark .hover\:bg-gray-100:hover {
+  background-color: oklch(0.25 0 0);
+}
+
+/* ── White backgrounds on inner card-like items ──
+   In dark mode, elements with bg-white inside cards should use card background.
+   We use a low-specificity approach that dark:bg-* classes can override.
+*/
+.dark .bg-white:not([class*="dark:"]) {
+  background-color: var(--card);
+}
+
+/* ============================================================
+   Dark Mode Enhanced Polish
+   ============================================================ */
+
+/* ── Dark mode: Feature cards ── */
+.dark .crm-feature-card {
+  background: oklch(0.22 0 0);
+}
+
+/* ── Dark mode: Hero gradient ── */
+.dark .crm-hero-gradient {
+  background: linear-gradient(135deg, #BD0024 0%, #8B0018 30%, #0F1B47 70%, #0A0F2E 100%);
+}
+
+/* ── Dark mode: Particles background ── */
+.dark .crm-particles-bg::before {
+  background: rgba(228, 0, 43, 0.04);
+}
+.dark .crm-particles-bg::after {
+  background: rgba(164, 181, 245, 0.03);
+}
+
+/* ── Dark mode: Card hover ── */
+.dark .crm-card-hover:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+/* ── Dark mode: Icon button ── */
+.dark .crm-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ── Dark mode: Striped table ── */
+.dark .crm-table-striped tbody tr:nth-child(even) {
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+/* ── Dark mode: Sticky header ── */
+.dark .crm-table-sticky thead {
+  background: var(--card);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* ── Dark mode: Error input ── */
+.dark .crm-input-error {
+  border-color: #f87171 !important;
+  box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.2);
+}
+
+/* ── Dark mode: Selection ── */
+.dark ::selection {
+  background: rgba(228, 0, 43, 0.3);
+}
+
+/* ── Dark mode: Landing page cards ── */
+.dark .crm-landing-stat {
+  background: oklch(0.22 0 0);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+/* ── Ensure proper contrast for muted text in dark mode ── */
+.dark .text-gray-500:not(.dark\:text-gray-400):not(.dark\:text-gray-300) {
+  color: oklch(0.6 0 0);
+}
+
+/* ── Dark mode: Border opacity enhancement ── */
+.dark .border-gray-200:not(.dark\:border-gray-700) {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* ── Dark mode: Smooth all transitions on body ── */
+.dark body,
+.dark html {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
