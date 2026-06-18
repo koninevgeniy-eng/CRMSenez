@@ -149,7 +149,16 @@ export async function POST(
 
     const event = await db.event.findUnique({
       where: { id },
-      include: { budgetItems: true },
+      include: {
+        budgetItems: true,
+        assignments: {
+          include: {
+            user: {
+              select: { department: true },
+            },
+          },
+        },
+      },
     });
     if (!event) {
       return NextResponse.json({ error: 'Мероприятие не найдено' }, { status: 404 });
@@ -345,6 +354,13 @@ export async function POST(
           'Взять в работу можно только мероприятие, согласованное и поставленное в календарь'
         );
         if (invalid) return invalid;
+        const organizationLead = event.assignments.find(a => a.role === 'LEAD' && a.user?.department === 'organization');
+        if (!organizationLead) {
+          return NextResponse.json(
+            { error: 'Перед передачей в работу назначьте руководителя мероприятия от департамента организации' },
+            { status: 400 }
+          );
+        }
         newStatus = 'in_progress';
         decision = 'accepted_by_organization';
         notificationMsg = `Мероприятие "${event.title}" принято в работу департаментом организации`;
@@ -353,8 +369,12 @@ export async function POST(
       }
 
       case 'complete': {
-        if (!(authUser.role === 'admin' || authUser.department === 'organization')) {
-          return NextResponse.json({ error: 'Отметить проведение может департамент организации' }, { status: 403 });
+        const organizationLead = event.assignments.find(a => a.role === 'LEAD' && a.user?.department === 'organization');
+        const canComplete = authUser.role === 'admin'
+          || isManagerOf(authUser, 'organization')
+          || organizationLead?.userId === authUser.id;
+        if (!canComplete) {
+          return NextResponse.json({ error: 'Отметить проведение может руководитель организации или руководитель мероприятия' }, { status: 403 });
         }
         const invalid = requireStatus(event.status, ['in_progress'], 'Проведенным можно отметить только мероприятие в работе');
         if (invalid) return invalid;

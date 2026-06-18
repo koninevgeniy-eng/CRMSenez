@@ -136,27 +136,35 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Проверяем лимит LEAD (максимум 1)
+    // Проверяем лимит LEAD (максимум 1 на департамент)
     if (role === 'LEAD') {
       const existingLeads = await db.eventAssignment.count({
-        where: { eventId, role: 'LEAD' },
+        where: {
+          eventId,
+          role: 'LEAD',
+          user: { department: user.department },
+        },
       });
       if (existingLeads >= 1) {
         return NextResponse.json(
-          { error: 'На мероприятии может быть только один LEAD' },
+          { error: 'В департаменте уже назначен руководитель мероприятия' },
           { status: 409 }
         );
       }
     }
 
-    // Проверяем лимит SUPPORT (максимум 3)
+    // Проверяем лимит SUPPORT (максимум 3 на департамент)
     if (role === 'SUPPORT') {
       const existingSupports = await db.eventAssignment.count({
-        where: { eventId, role: 'SUPPORT' },
+        where: {
+          eventId,
+          role: 'SUPPORT',
+          user: { department: user.department },
+        },
       });
       if (existingSupports >= 3) {
         return NextResponse.json(
-          { error: 'На мероприятии может быть не более 3 SUPPORT' },
+          { error: 'В департаменте может быть не более 3 SUPPORT' },
           { status: 409 }
         );
       }

@@ -22,15 +22,33 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const body = await request.json();
 
     // Check task exists
-    const task = await db.task.findUnique({ where: { id } });
+    const task = await db.task.findUnique({
+      where: { id },
+      include: {
+        event: {
+          include: {
+            assignments: {
+              include: {
+                user: { select: { department: true } },
+              },
+            },
+          },
+        },
+      },
+    });
     if (!task) {
       return NextResponse.json({ error: 'Задача не найдена' }, { status: 404 });
     }
 
     const isManager = authUser.role === 'admin' || authUser.role === 'manager';
+    const isEventLead = task.event.assignments.some(a =>
+      a.role === 'LEAD'
+      && a.userId === authUser.id
+      && a.user?.department === 'organization'
+    );
 
     // If employee, check they are assigned to this task
-    if (!isManager) {
+    if (!isManager && !isEventLead) {
       const assignment = await db.taskAssignment.findFirst({
         where: { taskId: id, userId: authUser.id },
       });
@@ -46,8 +64,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       updateData.completed = body.completed;
     }
 
-    // Only managers can edit these fields
-    if (isManager) {
+    // Managers and event leads can edit these fields
+    if (isManager || isEventLead) {
       if (body.title !== undefined) updateData.title = body.title;
       if (body.description !== undefined) updateData.description = body.description;
       if (body.dueDate !== undefined) updateData.dueDate = body.dueDate ? new Date(body.dueDate) : null;

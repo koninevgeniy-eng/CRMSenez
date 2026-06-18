@@ -1,15 +1,16 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Play, Send, Eye, CheckCircle2, CheckCircle, ClipboardList,
-  Calendar, MapPin, Users as UsersIcon, UserCheck, Badge as BadgeIcon,
-  Banknote,
+  Calendar, MapPin, Users as UsersIcon, UserCheck, Plus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { EventData, UserData, TASK_CATEGORIES } from '@/lib/crm-types';
 import { getStatusLabel, getStatusColor, formatDate, canStartEvent, canCompleteEvent } from '@/lib/crm-utils';
 import { apiFetch } from '@/lib/api-fetch';
@@ -19,6 +20,7 @@ interface OrganizationViewProps {
   events: EventData[];
   users: UserData[];
   isManager: boolean;
+  currentUserId?: string;
   handleWorkflowAction: (eventId: string, action: string, comment?: string, uin?: string) => Promise<void>;
   setSelectedEvent: (event: EventData | null) => void;
   setShowEventDialog: (show: boolean) => void;
@@ -29,11 +31,14 @@ export function OrganizationView({
   events,
   users,
   isManager,
+  currentUserId,
   handleWorkflowAction,
   setSelectedEvent,
   setShowEventDialog,
   fetchEvents,
 }: OrganizationViewProps) {
+  const [taskForms, setTaskForms] = useState<Record<string, { title: string; category: string; assigneeId: string; priority: string }>>({});
+
   // Организация видит: согласованные АГД мероприятия + in_progress (в работе)
   const newEvents = events.filter(e => ['calendar_approved', 'organization_assignment', 'approved'].includes(e.status));
   const inProgressEvents = events.filter(e => e.status === 'in_progress');
@@ -48,6 +53,68 @@ export function OrganizationView({
   const activeEvents = [...newEvents, ...inProgressEvents];
   // Сотрудники организации для назначения
   const orgUsers = users.filter(u => u.department === 'organization' && u.isActive);
+
+  const getOrgLead = (event: EventData) => event.assignments?.find(a => a.role === 'LEAD' && a.user?.department === 'organization');
+  const canManageEvent = (event: EventData) => isManager || getOrgLead(event)?.userId === currentUserId;
+
+  const assignUser = async (event: EventData, user: UserData, role: 'LEAD' | 'SUPPORT') => {
+    try {
+      const res = await apiFetch('/api/assignments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventId: event.id,
+          userId: user.id,
+          role,
+          responsibilityZone: role === 'LEAD' ? 'Руководитель мероприятия' : 'Организация',
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok) {
+        toast({ title: role === 'LEAD' ? `${user.name} назначен(а) руководителем мероприятия` : `${user.name} назначен(а) на мероприятие` });
+        fetchEvents();
+      } else {
+        toast({ title: 'Ошибка назначения', description: data?.error, variant: 'destructive' });
+      }
+    } catch {
+      toast({ title: 'Ошибка назначения', variant: 'destructive' });
+    }
+  };
+
+  const createTask = async (event: EventData) => {
+    const form = taskForms[event.id] || { title: '', category: 'technical', assigneeId: '', priority: 'medium' };
+    if (!form.title.trim()) {
+      toast({ title: 'Укажите название задачи', variant: 'destructive' });
+      return;
+    }
+    if (!form.assigneeId) {
+      toast({ title: 'Выберите исполнителя задачи', variant: 'destructive' });
+      return;
+    }
+    try {
+      const res = await apiFetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventId: event.id,
+          category: form.category,
+          title: form.title.trim(),
+          priority: form.priority,
+          assigneeIds: [form.assigneeId],
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok) {
+        toast({ title: 'Задача создана' });
+        setTaskForms(prev => ({ ...prev, [event.id]: { title: '', category: 'technical', assigneeId: '', priority: 'medium' } }));
+        fetchEvents();
+      } else {
+        toast({ title: 'Ошибка создания задачи', description: data?.error, variant: 'destructive' });
+      }
+    } catch {
+      toast({ title: 'Ошибка создания задачи', variant: 'destructive' });
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -74,7 +141,9 @@ export function OrganizationView({
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {newEvents.map(event => (
+              {newEvents.map(event => {
+                const orgLead = getOrgLead(event);
+                return (
                 <div key={event.id} className="border rounded-xl p-3 sm:p-5 space-y-3 sm:space-y-4 bg-white dark:bg-gray-900 hover:shadow-md transition-shadow overflow-hidden">
                   <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 sm:gap-3">
                     <div className="min-w-0 overflow-hidden">
@@ -94,11 +163,36 @@ export function OrganizationView({
                     <div className="bg-sky-50 rounded-lg p-3 sm:p-4 space-y-2 sm:space-y-3 overflow-hidden">
                       <h4 className="font-medium text-xs sm:text-sm flex items-center gap-2">
                         <UserCheck className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-sky-600 shrink-0" />
-                        Назначить ответственных
+                        Руководитель мероприятия
+                      </h4>
+                      {orgLead ? (
+                        <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs text-sky-800">
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          {orgLead.user?.name || orgLead.userId}
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5 sm:gap-2">
+                          {orgUsers.map(u => (
+                            <Button
+                              key={u.id}
+                              size="sm"
+                              variant="outline"
+                              className="gap-1.5 border-sky-300 text-sky-700 hover:bg-sky-50"
+                              onClick={() => assignUser(event, u, 'LEAD')}
+                            >
+                              <UserCheck className="h-3 w-3" />
+                              {u.name.split(' ')[0]}
+                            </Button>
+                          ))}
+                        </div>
+                      )}
+                      <h4 className="font-medium text-xs sm:text-sm flex items-center gap-2 pt-2">
+                        <UsersIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-sky-600 shrink-0" />
+                        Команда подготовки
                       </h4>
                       <div className="flex flex-wrap gap-1.5 sm:gap-2">
                         {orgUsers.map(u => {
-                          const isAssigned = event.assignments?.some(a => a.userId === u.id);
+                          const isAssigned = event.assignments?.some(a => a.userId === u.id && a.role === 'SUPPORT');
                           return (
                             <Button
                               key={u.id}
@@ -107,22 +201,7 @@ export function OrganizationView({
                               className={`gap-1.5 ${isAssigned ? 'bg-sky-600 hover:bg-sky-700' : 'border-sky-300 text-sky-700 hover:bg-sky-50'}`}
                               onClick={async () => {
                                 if (isAssigned) return;
-                                try {
-                                  const res = await apiFetch('/api/assignments', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({
-                                      eventId: event.id,
-                                      userId: u.id,
-                                      role: 'SUPPORT',
-                                      responsibilityZone: 'Организация',
-                                    }),
-                                  });
-                                  if (res.ok) {
-                                    toast({ title: `${u.name} назначен(а) на мероприятие` });
-                                    fetchEvents();
-                                  }
-                                } catch { toast({ title: 'Ошибка назначения', variant: 'destructive' }); }
+                                assignUser(event, u, 'SUPPORT');
                               }}
                             >
                               <UsersIcon className="h-3 w-3" />
@@ -137,15 +216,17 @@ export function OrganizationView({
 
                   {/* Action buttons */}
                   <div className="flex flex-wrap gap-2">
-                    <Button size="sm" className="bg-[#E4002B] hover:bg-[#BD0024] crm-btn-hover gap-1.5 text-xs sm:text-sm" onClick={() => handleWorkflowAction(event.id, 'start')}>
+                    <Button size="sm" disabled={!isManager || !orgLead} className="bg-[#E4002B] hover:bg-[#BD0024] crm-btn-hover gap-1.5 text-xs sm:text-sm" onClick={() => handleWorkflowAction(event.id, 'start')}>
                       <Play className="h-3.5 w-3.5" /> Взять в работу
                     </Button>
+                    {!orgLead && <span className="text-xs text-muted-foreground self-center">Сначала назначьте руководителя мероприятия</span>}
                     <Button variant="outline" size="sm" className="gap-1.5 text-xs sm:text-sm" onClick={() => { setSelectedEvent(event); setShowEventDialog(true); }}>
                       <Eye className="h-3.5 w-3.5" /> Карточка
                     </Button>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </CardContent>
         </Card>
@@ -153,6 +234,13 @@ export function OrganizationView({
 
       {/* In-progress events */}
       {inProgressEvents.map(event => {
+        const canManage = canManageEvent(event);
+        const taskForm = taskForms[event.id] || { title: '', category: 'technical', assigneeId: '', priority: 'medium' };
+        const taskAssignees = orgUsers.length > 0
+          ? orgUsers
+          : (event.assignments
+            ?.filter(a => a.user?.department === 'organization' && a.user)
+            .map(a => a.user as UserData) || []);
         const tasksByCategory = TASK_CATEGORIES.map(cat => ({
           ...cat,
           tasks: event.tasks.filter(t => t.category === cat.value),
@@ -180,7 +268,7 @@ export function OrganizationView({
                     </Button>
                   )}
                   {canCompleteEvent(event.status) && (
-                    <Button size="sm" className="bg-[#164194] hover:bg-[#190B62] gap-1.5 text-xs" onClick={() => handleWorkflowAction(event.id, 'complete')}>
+                    <Button size="sm" disabled={!canManage} className="bg-[#164194] hover:bg-[#190B62] gap-1.5 text-xs" onClick={() => handleWorkflowAction(event.id, 'complete')}>
                       <CheckCircle className="h-3.5 w-3.5" /> Мероприятие проведено
                     </Button>
                   )}
@@ -200,6 +288,30 @@ export function OrganizationView({
               </div>
             </CardHeader>
             <CardContent>
+              {canManage && (
+                <div className="mb-4 rounded-xl border bg-slate-50 p-3 sm:p-4 space-y-3">
+                  <h4 className="font-medium text-sm flex items-center gap-2"><Plus className="h-4 w-4 text-[#E4002B]" />Добавить задачу подготовки</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
+                    <Input
+                      className="sm:col-span-2"
+                      value={taskForm.title}
+                      onChange={e => setTaskForms(prev => ({ ...prev, [event.id]: { ...taskForm, title: e.target.value } }))}
+                      placeholder="Название задачи"
+                    />
+                    <Select value={taskForm.category} onValueChange={value => setTaskForms(prev => ({ ...prev, [event.id]: { ...taskForm, category: value } }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>{TASK_CATEGORIES.map(cat => <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Select value={taskForm.assigneeId} onValueChange={value => setTaskForms(prev => ({ ...prev, [event.id]: { ...taskForm, assigneeId: value } }))}>
+                      <SelectTrigger><SelectValue placeholder="Исполнитель" /></SelectTrigger>
+                      <SelectContent>{taskAssignees.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Button className="bg-[#E4002B] hover:bg-[#BD0024] gap-1.5" onClick={() => createTask(event)}>
+                      <Plus className="h-3.5 w-3.5" />Добавить
+                    </Button>
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 {tasksByCategory.map(cat => (
                   <div key={cat.value} className="space-y-2">
@@ -213,13 +325,11 @@ export function OrganizationView({
                           <Checkbox
                             checked={task.completed}
                             onCheckedChange={async (checked) => {
-                              const updatedTasks = event.tasks.map((t, idx) =>
-                                event.tasks.indexOf(task) === idx ? { ...t, completed: !!checked } : t
-                              );
-                              await apiFetch(`/api/events/${event.id}`, {
+                              if (!task.id) return;
+                              await apiFetch(`/api/tasks/${task.id}`, {
                                 method: 'PUT',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ tasks: updatedTasks, changedBy: 'Организация' }),
+                                body: JSON.stringify({ completed: !!checked }),
                               });
                               fetchEvents();
                             }}

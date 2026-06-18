@@ -398,8 +398,9 @@ export default function CRMPage() {
     fetchNotifications();
     if (activeDept === 'analytics' || activeDept === 'dashboard') fetchAnalytics();
     if (activeDept === 'cabinet') fetchPersonalData();
+    if (activeDept === 'organization' && (isManager || isAdmin)) fetchUsers();
     if (activeDept === 'admin') { fetchUsers(); fetchPendingUsers(); }
-  }, [fetchEvents, fetchNotifications, fetchAnalytics, fetchPersonalData, fetchUsers, fetchPendingUsers, activeDept]);
+  }, [fetchEvents, fetchNotifications, fetchAnalytics, fetchPersonalData, fetchUsers, fetchPendingUsers, activeDept, isManager, isAdmin]);
 
   useEffect(() => {
     if (events.length === 0 && !loading) {
@@ -1056,6 +1057,7 @@ export default function CRMPage() {
       events={events}
       users={users}
       isManager={isManager}
+      currentUserId={user?.id}
       handleWorkflowAction={handleWorkflowAction}
       setSelectedEvent={setSelectedEvent}
       setShowEventDialog={setShowEventDialog}

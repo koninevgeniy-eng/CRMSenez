@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { getAuthUser, getManagerUser } from '@/lib/auth-helpers';
+import { getAuthUser } from '@/lib/auth-helpers';
 import { validateCsrf, csrfErrorResponse } from '@/lib/csrf';
 
 // GET /api/tasks — fetch tasks
@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
       return csrfErrorResponse();
     }
 
-    const authUser = await getManagerUser(request);
+    const authUser = await getAuthUser(request);
     if (!authUser) {
       return NextResponse.json({ error: 'Недостаточно прав для создания задач' }, { status: 403 });
     }
@@ -162,21 +162,40 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify event exists
-    const event = await db.event.findUnique({ where: { id: eventId } });
+    const event = await db.event.findUnique({
+      where: { id: eventId },
+      include: {
+        assignments: {
+          include: {
+            user: { select: { department: true } },
+          },
+        },
+      },
+    });
     if (!event) {
       return NextResponse.json({ error: 'Мероприятие не найдено' }, { status: 404 });
     }
 
+    const isManager = authUser.role === 'admin' || authUser.role === 'manager';
+    const isEventLead = event.assignments.some(a =>
+      a.role === 'LEAD'
+      && a.userId === authUser.id
+      && a.user?.department === 'organization'
+    );
+    if (!isManager && !isEventLead) {
+      return NextResponse.json({ error: 'Создавать задачи может руководитель организации или руководитель мероприятия' }, { status: 403 });
+    }
+
     if (assigneeIds && Array.isArray(assigneeIds) && assigneeIds.length > 0) {
-      if (authUser.role === 'manager') {
+      if (authUser.role === 'manager' || isEventLead) {
         const assignees = await db.user.findMany({
           where: { id: { in: assigneeIds }, isActive: true },
           select: { id: true, department: true },
         });
         if (assignees.length !== assigneeIds.length
-          || assignees.some(user => user.department !== authUser.department)) {
+          || assignees.some(user => user.department !== 'organization' || (authUser.role === 'manager' && user.department !== authUser.department))) {
           return NextResponse.json(
-            { error: 'Менеджер может назначать задачи только сотрудникам своего отдела' },
+            { error: 'Задачи организации можно назначать только активным сотрудникам департамента организации' },
             { status: 403 }
           );
         }
