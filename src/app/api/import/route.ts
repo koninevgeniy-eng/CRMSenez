@@ -44,11 +44,11 @@ function worksheetToJson(sheet: ExcelJS.Worksheet): any[] {
 function mapStatus(excelStatus: string): string {
   if (!excelStatus) return 'draft';
   const s = String(excelStatus).trim().toLowerCase();
-  if (s.includes('заверш')) return 'completed';
+  if (s.includes('заверш')) return 'archived';
   if (s.includes('процесс')) return 'in_progress';
-  if (s.includes('запланирован')) return 'pending_approval';
-  if (s.includes('согласовано') && !s.includes('на')) return 'approved';
-  if (s.includes('отклон')) return 'rejected';
+  if (s.includes('запланирован')) return 'methodology_review';
+  if (s.includes('согласовано') && !s.includes('на')) return 'calendar_approved';
+  if (s.includes('отклон')) return 'revision_requested';
   if (s.includes('отмен')) return 'cancelled';
   return 'draft';
 }

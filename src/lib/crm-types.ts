@@ -27,36 +27,85 @@ export const USER_ROLE_COLORS: Record<UserRole, string> = {
   employee: 'bg-sky-50 text-sky-700 border-sky-300',
 };
 
-export type EventStatus = 'draft' | 'pending_approval' | 'budget_approved' | 'approved' | 'uin_assigned' | 'in_progress' | 'pending_actual_budget' | 'pending_actual_approval' | 'actual_budget_approved' | 'completed' | 'rejected' | 'cancelled';
+export type EventStatus =
+  | 'draft'
+  | 'methodology_review'
+  | 'revision_requested'
+  | 'coordination_budget_review'
+  | 'uin_assignment'
+  | 'agd_date_review'
+  | 'calendar_approved'
+  | 'organization_assignment'
+  | 'in_progress'
+  | 'event_finished'
+  | 'methodology_actual_budget_review'
+  | 'coordination_actual_budget_review'
+  | 'actual_budget_approved'
+  | 'cancel_requested'
+  | 'cancelled'
+  | 'archived'
+  // Legacy statuses kept for existing records during migration.
+  | 'pending_approval'
+  | 'budget_approved'
+  | 'approved'
+  | 'uin_assigned'
+  | 'pending_actual_budget'
+  | 'pending_actual_approval'
+  | 'completed'
+  | 'rejected';
 
 export const STATUS_LABELS: Record<EventStatus, string> = {
   draft: 'Черновик',
+  methodology_review: 'Согласование методологии',
+  revision_requested: 'На доработке',
+  coordination_budget_review: 'Согласование бюджета',
+  uin_assignment: 'Присвоение УИН',
+  agd_date_review: 'Проверка АГД',
+  calendar_approved: 'В календаре',
+  organization_assignment: 'Назначение организации',
+  in_progress: 'В процессе',
+  event_finished: 'Мероприятие проведено',
+  methodology_actual_budget_review: 'Факт. бюджет у методологии',
+  coordination_actual_budget_review: 'Факт. бюджет у координации',
+  actual_budget_approved: 'Факт. бюджет согл.',
+  cancel_requested: 'Запрошена отмена',
+  cancelled: 'Отменено',
+  archived: 'Архив',
   pending_approval: 'На согласовании',
   budget_approved: 'Бюджет согласован',
   approved: 'Согласовано',
   uin_assigned: 'УИН присвоен',
-  in_progress: 'В процессе',
   pending_actual_budget: 'Ожидает факт. бюджет',
   pending_actual_approval: 'Факт. бюджет на согл.',
-  actual_budget_approved: 'Факт. бюджет согл.',
   completed: 'Завершено',
   rejected: 'Отклонено',
-  cancelled: 'Отменено',
 };
 
 export const STATUS_COLORS: Record<EventStatus, string> = {
   draft: 'bg-gray-100 text-gray-700 border-gray-300',
+  methodology_review: 'bg-amber-50 text-amber-700 border-amber-300',
+  revision_requested: 'bg-red-50 text-red-700 border-red-300',
+  coordination_budget_review: 'bg-sky-50 text-sky-700 border-sky-300',
+  uin_assignment: 'bg-teal-50 text-teal-700 border-teal-300',
+  agd_date_review: 'bg-violet-50 text-violet-700 border-violet-300',
+  calendar_approved: 'bg-emerald-50 text-emerald-700 border-emerald-300',
+  organization_assignment: 'bg-cyan-50 text-cyan-700 border-cyan-300',
+  in_progress: 'bg-blue-50 text-blue-700 border-blue-300',
+  event_finished: 'bg-orange-50 text-orange-700 border-orange-300',
+  methodology_actual_budget_review: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-300',
+  coordination_actual_budget_review: 'bg-purple-50 text-purple-700 border-purple-300',
+  actual_budget_approved: 'bg-indigo-50 text-indigo-700 border-indigo-300',
+  cancel_requested: 'bg-red-50 text-red-700 border-red-300',
+  cancelled: 'bg-gray-100 text-gray-500 border-gray-300',
+  archived: 'bg-green-50 text-green-700 border-green-300',
   pending_approval: 'bg-amber-50 text-amber-700 border-amber-300',
   budget_approved: 'bg-sky-50 text-sky-700 border-sky-300',
   approved: 'bg-emerald-50 text-emerald-700 border-emerald-300',
   uin_assigned: 'bg-teal-50 text-teal-700 border-teal-300',
-  in_progress: 'bg-blue-50 text-blue-700 border-blue-300',
   pending_actual_budget: 'bg-orange-50 text-orange-700 border-orange-300',
   pending_actual_approval: 'bg-purple-50 text-purple-700 border-purple-300',
-  actual_budget_approved: 'bg-indigo-50 text-indigo-700 border-indigo-300',
   completed: 'bg-green-50 text-green-700 border-green-300',
   rejected: 'bg-red-50 text-red-700 border-red-300',
-  cancelled: 'bg-gray-100 text-gray-500 border-gray-300',
 };
 
 export const BUDGET_CATEGORIES = [
@@ -272,16 +321,31 @@ export interface EventAssignment {
   user?: UserData;
 }
 
+export interface EventApproval {
+  id: string;
+  eventId: string;
+  version: number;
+  stage: string;
+  decision: string;
+  comment?: string;
+  decidedBy: string;
+  role: string;
+  department?: string;
+  createdAt: string;
+}
+
 // Workflow stages for progress indicator
 export const WORKFLOW_STAGES: { key: EventStatus; label: string }[] = [
   { key: 'draft', label: 'Черновик' },
-  { key: 'pending_approval', label: 'На согласовании' },
-  { key: 'uin_assigned', label: 'УИН + Бюджет' },
-  { key: 'approved', label: 'Согласовано' },
+  { key: 'methodology_review', label: 'Методология' },
+  { key: 'coordination_budget_review', label: 'Бюджет' },
+  { key: 'uin_assignment', label: 'УИН' },
+  { key: 'agd_date_review', label: 'АГД' },
+  { key: 'calendar_approved', label: 'Календарь' },
   { key: 'in_progress', label: 'В процессе' },
-  { key: 'pending_actual_budget', label: 'Факт. бюджет' },
-  { key: 'pending_actual_approval', label: 'Согл. факта' },
-  { key: 'completed', label: 'Завершено' },
+  { key: 'event_finished', label: 'Проведено' },
+  { key: 'coordination_actual_budget_review', label: 'Факт' },
+  { key: 'archived', label: 'Архив' },
 ];
 
 export interface UserData {
@@ -304,6 +368,12 @@ export interface EventData {
   uin?: string;
   title: string;
   status: EventStatus;
+  ownerId?: string;
+  currentVersion: number;
+  archivedAt?: string;
+  cancelRequestedAt?: string;
+  cancelRequestedBy?: string;
+  cancelReason?: string;
   programDirector?: string;
   coOrganizers?: string;
   startDate?: string;
@@ -369,6 +439,7 @@ export interface EventData {
   accommodations: Accommodation[];
   notifications: Notification[];
   changeLogs: ChangeLog[];
+  approvals?: EventApproval[];
   payments: Payment[];
   assignments: EventAssignment[];
 }

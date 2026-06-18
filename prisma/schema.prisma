@@ -31,6 +31,12 @@ model Event {
   uin         String?  @unique
   title       String
   status      String   @default("draft")
+  ownerId     String?
+  currentVersion Int   @default(1)
+  archivedAt  DateTime?
+  cancelRequestedAt DateTime?
+  cancelRequestedBy String?
+  cancelReason String?
 
   // Основная информация (Методология)
   programDirector   String?
@@ -114,6 +120,7 @@ model Event {
   changeLogs      ChangeLog[]
   payments        Payment[]
   assignments     EventAssignment[]
+  approvals       EventApproval[]
 }
 
 model Speaker {
@@ -295,6 +302,24 @@ model EventAssignment {
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([eventId, userId, role])
+}
+
+model EventApproval {
+  id         String   @id @default(cuid())
+  eventId    String
+  version    Int      @default(1)
+  stage      String
+  decision   String
+  comment    String?
+  decidedBy  String
+  role       String
+  department String?
+  createdAt  DateTime @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId, createdAt])
+  @@index([stage, decision])
 }
 
 model AuditLog {

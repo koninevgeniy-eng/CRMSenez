@@ -87,18 +87,21 @@ export function MethodologyView({
   const renderKanbanView = () => {
     const kanbanStatuses: { status: EventStatus; label: string; color: string; bgColor: string; borderColor: string }[] = [
       { status: 'draft', label: 'Черновик', color: 'text-gray-700', bgColor: 'bg-gray-50', borderColor: 'border-gray-200' },
-      { status: 'pending_approval', label: 'На согласовании', color: 'text-amber-700', bgColor: 'bg-amber-50/50', borderColor: 'border-amber-200' },
-      { status: 'uin_assigned', label: 'УИН присвоен', color: 'text-teal-700', bgColor: 'bg-teal-50/50', borderColor: 'border-teal-200' },
-      { status: 'approved', label: 'Согласовано', color: 'text-[#E4002B]', bgColor: 'bg-[#FFF1F3]/50', borderColor: 'border-[#FF9DAF]' },
+      { status: 'methodology_review', label: 'Методология', color: 'text-amber-700', bgColor: 'bg-amber-50/50', borderColor: 'border-amber-200' },
+      { status: 'revision_requested', label: 'На доработке', color: 'text-red-700', bgColor: 'bg-red-50/50', borderColor: 'border-red-200' },
+      { status: 'coordination_budget_review', label: 'Бюджет', color: 'text-sky-700', bgColor: 'bg-sky-50/50', borderColor: 'border-sky-200' },
+      { status: 'agd_date_review', label: 'АГД', color: 'text-violet-700', bgColor: 'bg-violet-50/50', borderColor: 'border-violet-200' },
+      { status: 'calendar_approved', label: 'В календаре', color: 'text-[#E4002B]', bgColor: 'bg-[#FFF1F3]/50', borderColor: 'border-[#FF9DAF]' },
       { status: 'in_progress', label: 'В процессе', color: 'text-blue-700', bgColor: 'bg-blue-50/50', borderColor: 'border-blue-200' },
-      { status: 'pending_actual_budget', label: 'Ожидает факт. бюджет', color: 'text-orange-700', bgColor: 'bg-orange-50/50', borderColor: 'border-orange-200' },
-      { status: 'pending_actual_approval', label: 'Факт. бюджет на согл.', color: 'text-purple-700', bgColor: 'bg-purple-50/50', borderColor: 'border-purple-200' },
+      { status: 'event_finished', label: 'Проведено', color: 'text-orange-700', bgColor: 'bg-orange-50/50', borderColor: 'border-orange-200' },
+      { status: 'methodology_actual_budget_review', label: 'Факт. методология', color: 'text-fuchsia-700', bgColor: 'bg-fuchsia-50/50', borderColor: 'border-fuchsia-200' },
+      { status: 'coordination_actual_budget_review', label: 'Факт. координация', color: 'text-purple-700', bgColor: 'bg-purple-50/50', borderColor: 'border-purple-200' },
       { status: 'actual_budget_approved', label: 'Факт. бюджет согл.', color: 'text-indigo-700', bgColor: 'bg-indigo-50/50', borderColor: 'border-indigo-200' },
-      { status: 'completed', label: 'Завершено', color: 'text-green-700', bgColor: 'bg-green-50/50', borderColor: 'border-green-200' },
+      { status: 'archived', label: 'Архив', color: 'text-green-700', bgColor: 'bg-green-50/50', borderColor: 'border-green-200' },
     ];
 
     return (
-      <div className="flex overflow-x-auto gap-4 pb-2 crm-scroll sm:grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-9">
+      <div className="flex overflow-x-auto gap-4 pb-2 crm-scroll sm:grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
         {kanbanStatuses.map(col => {
           const colEvents = events.filter(e => e.status === col.status);
           const colBudget = colEvents.reduce((s, e) => s + (e.budget || 0), 0);
@@ -333,7 +336,7 @@ export function MethodologyView({
           <CardContent className="p-2.5 sm:p-3">
             <div className="flex items-center gap-2 sm:gap-3">
               <div className="p-1.5 sm:p-2.5 bg-blue-100 rounded-lg sm:rounded-xl shrink-0"><Send className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" /></div>
-              <div className="min-w-0"><p className="text-[10px] sm:text-xs text-muted-foreground font-medium leading-tight">На согласовании</p><p className="text-lg sm:text-2xl font-bold crm-stat-number crm-count-up">{events.filter(e => e.status === 'pending_approval').length}</p></div>
+              <div className="min-w-0"><p className="text-[10px] sm:text-xs text-muted-foreground font-medium leading-tight">На согласовании</p><p className="text-lg sm:text-2xl font-bold crm-stat-number crm-count-up">{events.filter(e => ['methodology_review', 'coordination_budget_review', 'agd_date_review', 'methodology_actual_budget_review', 'coordination_actual_budget_review', 'pending_approval', 'pending_actual_approval'].includes(e.status)).length}</p></div>
             </div>
           </CardContent>
         </Card>
@@ -341,7 +344,7 @@ export function MethodologyView({
           <CardContent className="p-2.5 sm:p-3">
             <div className="flex items-center gap-2 sm:gap-3">
               <div className="p-1.5 sm:p-2.5 bg-orange-100 rounded-lg sm:rounded-xl shrink-0"><BanknoteIcon className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600" /></div>
-              <div className="min-w-0"><p className="text-[10px] sm:text-xs text-muted-foreground font-medium leading-tight">Факт. бюджет</p><p className="text-lg sm:text-2xl font-bold crm-stat-number crm-count-up">{events.filter(e => e.status === 'pending_actual_budget').length}</p></div>
+              <div className="min-w-0"><p className="text-[10px] sm:text-xs text-muted-foreground font-medium leading-tight">Факт. бюджет</p><p className="text-lg sm:text-2xl font-bold crm-stat-number crm-count-up">{events.filter(e => ['event_finished', 'methodology_actual_budget_review', 'coordination_actual_budget_review', 'pending_actual_budget', 'pending_actual_approval'].includes(e.status)).length}</p></div>
             </div>
           </CardContent>
         </Card>
@@ -349,7 +352,7 @@ export function MethodologyView({
           <CardContent className="p-2.5 sm:p-3">
             <div className="flex items-center gap-2 sm:gap-3">
               <div className="p-1.5 sm:p-2.5 bg-green-100 rounded-lg sm:rounded-xl shrink-0"><CheckCircle2 className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" /></div>
-              <div className="min-w-0"><p className="text-[10px] sm:text-xs text-muted-foreground font-medium leading-tight">Согласовано</p><p className="text-lg sm:text-2xl font-bold crm-stat-number crm-count-up">{events.filter(e => ['approved','budget_approved','uin_assigned','actual_budget_approved'].includes(e.status)).length}</p></div>
+              <div className="min-w-0"><p className="text-[10px] sm:text-xs text-muted-foreground font-medium leading-tight">Согласовано</p><p className="text-lg sm:text-2xl font-bold crm-stat-number crm-count-up">{events.filter(e => ['calendar_approved', 'organization_assignment', 'approved', 'budget_approved', 'uin_assigned', 'actual_budget_approved'].includes(e.status)).length}</p></div>
             </div>
           </CardContent>
         </Card>
@@ -384,7 +387,7 @@ export function MethodologyView({
 
       {/* Speaker Costs Section — for events in progress or completed */}
       {(() => {
-        const activeEvents = events.filter(e => ['in_progress', 'completed'].includes(e.status) && e.speakers.length > 0);
+        const activeEvents = events.filter(e => ['in_progress', 'event_finished', 'actual_budget_approved', 'archived', 'completed'].includes(e.status) && e.speakers.length > 0);
         if (activeEvents.length === 0) return null;
         return (
           <Card className="shadow-sm border-l-4 border-l-teal-400">
@@ -533,7 +536,7 @@ export function MethodologyView({
                         <div className="flex items-center gap-2 mb-1.5">
                           {/* Priority indicator dot */}
                           <div className={`crm-priority-dot ${
-                            event.status === 'pending_approval' ? 'high' :
+                            ['methodology_review', 'coordination_budget_review', 'agd_date_review', 'pending_approval'].includes(event.status) ? 'high' :
                             event.status === 'draft' ? 'medium' : 'low'
                           }`} />
                           <h3 className="font-semibold truncate text-[15px]">{event.title}</h3>

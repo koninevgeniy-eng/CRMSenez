@@ -3,41 +3,132 @@ import { db } from '@/lib/db';
 import { getAuthUser } from '@/lib/auth-helpers';
 import { validateCsrf, csrfErrorResponse } from '@/lib/csrf';
 
-/**
- * Workflow CRM Сенеж — полная цепочка согласования:
- *
- * 1. Методология создает мероприятие → draft
- * 2. Методология отправляет на согласование бюджета → pending_approval
- * 3. Координация согласовывает бюджет + присваивает УИН → uin_assigned
- * 4. АГД согласовывает и ставит в календарь → approved
- * 5. Организация назначает организатора и берёт в работу → in_progress
- * 6. Организатор отмечает, что мероприятие проведено → pending_actual_budget
- * 7. Методология вносит фактический бюджет → pending_actual_approval
- * 8. Координация согласовывает фактический бюджет → actual_budget_approved
- * 9. Методология завершает мероприятие → completed
- * 10. Все финальные данные → Аналитика
- *
- * Отклонение:
- * - На этапе pending_approval → rejected (возврат в draft)
- * - На этапе pending_actual_approval → pending_actual_budget (возврат Методологии)
- *
- * Обязательные поля для переходов:
- * - submit_for_approval: title, startDate, program OR plan
- * - approve_budget: budget > 0 or coordinator comment
- * - start: venue, participantCount
- * - submit_actual_budget: actualCost > 0
- */
+type WorkflowAction =
+  | 'submit_for_approval'
+  | 'methodology_approve'
+  | 'request_revision'
+  | 'reject'
+  | 'approve_budget'
+  | 'assign_uin'
+  | 'agd_approve'
+  | 'add_to_calendar'
+  | 'accept_organization'
+  | 'start'
+  | 'complete'
+  | 'submit_actual_budget'
+  | 'methodology_approve_actual_budget'
+  | 'approve_actual_budget'
+  | 'reject_actual_budget'
+  | 'finalize_event'
+  | 'request_cancel'
+  | 'confirm_cancel'
+  | 'cancel';
+
+const FINAL_STATUSES = new Set(['cancelled', 'archived', 'completed']);
+const REVISION_STATUSES = new Set([
+  'methodology_review',
+  'coordination_budget_review',
+  'agd_date_review',
+  'methodology_actual_budget_review',
+  'coordination_actual_budget_review',
+  'pending_approval',
+  'pending_actual_approval',
+]);
+
+function isManagerOf(user: { role: string; department: string | null }, department: string): boolean {
+  return user.role === 'manager' && user.department === department;
+}
+
+function canActAsOwner(
+  user: { id: string; role: string; department: string | null },
+  event: { ownerId: string | null; status: string },
+): boolean {
+  return user.role === 'admin'
+    || event.ownerId === user.id
+    || (!event.ownerId && user.department === 'methodology');
+}
+
+function canUseStage(
+  user: { role: string; department: string | null },
+  stage: string,
+): boolean {
+  if (user.role === 'admin') return true;
+  if (stage === 'methodology_review' || stage === 'methodology_actual_budget_review') {
+    return isManagerOf(user, 'methodology');
+  }
+  if (stage === 'coordination_budget_review' || stage === 'coordination_actual_budget_review') {
+    return isManagerOf(user, 'coordination');
+  }
+  if (stage === 'agd_date_review') {
+    return isManagerOf(user, 'agd');
+  }
+  return false;
+}
+
+function normalizeStageForPermission(status: string): string {
+  const legacyMap: Record<string, string> = {
+    pending_approval: 'coordination_budget_review',
+    budget_approved: 'uin_assignment',
+    uin_assigned: 'agd_date_review',
+    approved: 'calendar_approved',
+    pending_actual_budget: 'event_finished',
+    pending_actual_approval: 'coordination_actual_budget_review',
+    completed: 'archived',
+    rejected: 'revision_requested',
+  };
+  return legacyMap[status] || status;
+}
+
+function requireStatus(current: string, allowed: string[], message: string): NextResponse | null {
+  if (!allowed.includes(current)) {
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+  return null;
+}
+
+function requireComment(comment: unknown, message = 'Комментарий обязателен для этого действия'): NextResponse | null {
+  if (typeof comment !== 'string' || comment.trim().length === 0) {
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+  return null;
+}
+
+function notificationDepartmentsFor(status: string): string[] {
+  switch (status) {
+    case 'methodology_review':
+    case 'revision_requested':
+    case 'methodology_actual_budget_review':
+      return ['Методология'];
+    case 'coordination_budget_review':
+    case 'uin_assignment':
+    case 'coordination_actual_budget_review':
+    case 'actual_budget_approved':
+      return ['Координация', 'Методология'];
+    case 'agd_date_review':
+    case 'calendar_approved':
+      return ['АГД', 'Методология', 'Координация'];
+    case 'organization_assignment':
+    case 'in_progress':
+    case 'event_finished':
+      return ['Организация', 'Методология'];
+    case 'cancel_requested':
+    case 'cancelled':
+    case 'archived':
+      return ['Методология', 'Координация', 'АГД', 'Организация', 'Аналитика'];
+    default:
+      return ['Методология'];
+  }
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // CSRF CHECK
     if (!validateCsrf(request)) {
       return csrfErrorResponse();
     }
 
-    // AUTH CHECK: Require authenticated user for workflow actions
     const authUser = await getAuthUser(request);
     if (!authUser) {
       return NextResponse.json(
@@ -48,42 +139,12 @@ export async function POST(
 
     const { id } = await params;
     const body = await request.json();
-    const { action, comment, changedBy, uin } = body;
-
-    // RBAC: Check role/department permissions per action
-    const isAdmin = authUser.role === 'admin';
-    const userDept = authUser.department;
-    const isManager = authUser.role === 'manager';
-
-    const ACTION_PERMISSIONS: Record<string, { departments: string[]; allowManager?: boolean }> = {
-      submit_for_approval: { departments: ['methodology'] },
-      approve_budget: { departments: ['coordination'] },
-      reject: { departments: ['coordination'] },
-      assign_uin: { departments: ['coordination'] },
-      add_to_calendar: { departments: ['agd'] },
-      start: { departments: ['organization'] },
-      complete: { departments: ['organization'] },
-      submit_actual_budget: { departments: ['methodology'] },
-      approve_actual_budget: { departments: ['coordination'] },
-      reject_actual_budget: { departments: ['coordination'] },
-      finalize_event: { departments: ['methodology'] },
-      cancel: { departments: [], allowManager: true },
-    };
-
-    const perm = ACTION_PERMISSIONS[action];
-    if (perm) {
-      const allowed = isAdmin
-        || (isManager && (
-          perm.allowManager
-          || (userDept !== null && perm.departments.includes(userDept))
-        ));
-      if (!allowed) {
-        return NextResponse.json(
-          { error: 'Недостаточно прав для выполнения этого действия' },
-          { status: 403 }
-        );
-      }
-    }
+    const action = body.action as WorkflowAction;
+    const comment = typeof body.comment === 'string' ? body.comment.trim() : '';
+    const changedBy = typeof body.changedBy === 'string' && body.changedBy.trim()
+      ? body.changedBy.trim()
+      : authUser.name;
+    const uin = typeof body.uin === 'string' ? body.uin.trim() : '';
 
     const event = await db.event.findUnique({
       where: { id },
@@ -94,244 +155,325 @@ export async function POST(
     }
 
     let newStatus = event.status;
+    let decision: string = action;
+    let stage = event.status;
     let notificationMsg = '';
     let notificationType = 'info';
-    let targetDepartments: string[] = [];
+    const updateData: Record<string, unknown> = {};
+    let createUinTask = false;
 
     switch (action) {
       case 'submit_for_approval': {
-        // Методология → Координация: отправить на согласование
+        if (!canActAsOwner(authUser, event)) {
+          return NextResponse.json(
+            { error: 'Отправить карточку на согласование может только ее создатель или администратор' },
+            { status: 403 }
+          );
+        }
+
         const missingFields: string[] = [];
-        if (!event.title || event.title.trim().length === 0) {
-          missingFields.push('Название мероприятия');
-        }
-        if (!event.startDate) {
-          missingFields.push('Дата начала');
-        }
-        if (!event.program && !event.eventPlan) {
-          missingFields.push('Программа или план мероприятия');
-        }
+        if (!event.title || event.title.trim().length === 0) missingFields.push('Название мероприятия');
+        if (!event.startDate) missingFields.push('Дата начала');
+        if (!event.endDate) missingFields.push('Дата окончания');
+        if (!event.participantCount || event.participantCount <= 0) missingFields.push('Количество участников');
+        if (!event.programDirector) missingFields.push('Руководитель программы');
+        if (!event.program && !event.eventPlan) missingFields.push('Программа или план мероприятия');
+
         if (missingFields.length > 0) {
           return NextResponse.json(
             { error: `Для отправки на согласование необходимо заполнить: ${missingFields.join(', ')}` },
             { status: 400 }
           );
         }
-        if (event.status !== 'draft' && event.status !== 'rejected') {
+
+        const invalid = requireStatus(
+          event.status,
+          ['draft', 'revision_requested', 'rejected'],
+          'Отправить на согласование можно только из черновика или после доработки'
+        );
+        if (invalid) return invalid;
+
+        newStatus = 'methodology_review';
+        decision = 'submitted';
+        notificationMsg = `Мероприятие "${event.title}" направлено руководителю методологии на согласование`;
+        notificationType = 'approval';
+        break;
+      }
+
+      case 'methodology_approve': {
+        if (!canUseStage(authUser, 'methodology_review')) {
+          return NextResponse.json({ error: 'Согласовать карточку может руководитель методологии' }, { status: 403 });
+        }
+        const invalid = requireStatus(event.status, ['methodology_review'], 'Карточка не находится на согласовании методологии');
+        if (invalid) return invalid;
+        newStatus = 'coordination_budget_review';
+        decision = 'approved';
+        notificationMsg = `Руководитель методологии согласовал мероприятие "${event.title}" — передано на согласование бюджета`;
+        notificationType = 'approval';
+        break;
+      }
+
+      case 'request_revision':
+      case 'reject': {
+        const commentError = requireComment(comment, 'При возврате на доработку нужно указать причину');
+        if (commentError) return commentError;
+        if (!REVISION_STATUSES.has(event.status)) {
           return NextResponse.json(
-            { error: 'Отправить на согласование можно только из черновика или после отклонения' },
+            { error: 'Вернуть на доработку можно только карточку на этапе согласования' },
             { status: 400 }
           );
         }
-        newStatus = 'pending_approval';
-        notificationMsg = `Мероприятие "${event.title}" направлено на согласование в Департамент координации`;
-        notificationType = 'approval';
-        targetDepartments = ['Координация', 'АГД', 'Организация', 'Аналитика'];
+        if (!canUseStage(authUser, normalizeStageForPermission(event.status))) {
+          return NextResponse.json(
+            { error: 'Недостаточно прав для возврата карточки на этом этапе' },
+            { status: 403 }
+          );
+        }
+        newStatus = event.status === 'coordination_actual_budget_review' || event.status === 'pending_actual_approval'
+          ? 'event_finished'
+          : 'revision_requested';
+        decision = 'revision_requested';
+        notificationMsg = `Мероприятие "${event.title}" возвращено создателю на доработку. Причина: ${comment}`;
+        notificationType = 'warning';
         break;
       }
 
       case 'approve_budget': {
-        // Координация: согласовать бюджет + УИН
+        if (!canUseStage(authUser, 'coordination_budget_review')) {
+          return NextResponse.json({ error: 'Бюджет может согласовать руководитель координации' }, { status: 403 });
+        }
+        const invalid = requireStatus(
+          event.status,
+          ['coordination_budget_review', 'pending_approval'],
+          'Бюджет можно согласовать только на этапе согласования бюджета'
+        );
+        if (invalid) return invalid;
         const totalPlanned = event.budgetItems.reduce((s, b) => s + b.plannedAmount, 0);
-        if ((!event.budget || event.budget <= 0) && totalPlanned <= 0 && !comment) {
+        if ((!event.budget || event.budget <= 0) && totalPlanned <= 0) {
           return NextResponse.json(
-            { error: 'Для согласования бюджета необходимо указать бюджет > 0 или добавить комментарий координатора' },
+            { error: 'Для согласования бюджета необходимо указать бюджет или бюджетные строки' },
             { status: 400 }
           );
         }
-        if (event.status !== 'pending_approval') {
-          return NextResponse.json(
-            { error: 'Бюджет можно согласовать только для мероприятий на согласовании' },
-            { status: 400 }
-          );
-        }
-        // If UIN provided, go directly to uin_assigned; otherwise budget_approved
-        if (uin && uin.trim().length > 0) {
-          newStatus = 'uin_assigned';
-          notificationMsg = `Бюджет и УИН мероприятия "${event.title}" согласованы Департаментом координации — передано в АГД`;
-        } else {
-          newStatus = 'budget_approved';
-          notificationMsg = `Бюджет мероприятия "${event.title}" согласован Департаментом координации`;
-        }
+        newStatus = uin ? 'agd_date_review' : 'uin_assignment';
+        decision = 'budget_approved';
+        updateData.budgetApproved = true;
+        updateData.budgetApprovedBy = changedBy;
+        updateData.budgetApprovedAt = new Date();
+        if (comment) updateData.coordinatorComment = comment;
+        if (uin) updateData.uin = uin;
+        createUinTask = !uin;
+        notificationMsg = uin
+          ? `Бюджет и УИН мероприятия "${event.title}" согласованы — передано в АГД`
+          : `Бюджет мероприятия "${event.title}" согласован — требуется присвоить УИН`;
         notificationType = 'approval';
-        targetDepartments = ['Методология', 'АГД', 'Организация', 'Аналитика'];
         break;
       }
 
       case 'assign_uin': {
-        // Координация: присвоить УИН (после согласования бюджета, если не был указан ранее)
-        if (event.status !== 'budget_approved') {
-          return NextResponse.json(
-            { error: 'УИН можно присвоить только после согласования бюджета' },
-            { status: 400 }
-          );
+        if (!canUseStage(authUser, 'coordination_budget_review')) {
+          return NextResponse.json({ error: 'УИН может присвоить руководитель координации' }, { status: 403 });
         }
+        const invalid = requireStatus(
+          event.status,
+          ['uin_assignment', 'budget_approved'],
+          'УИН можно присвоить только после согласования бюджета'
+        );
+        if (invalid) return invalid;
         if (!uin && !event.uin) {
-          return NextResponse.json(
-            { error: 'УИН обязателен для этого действия' },
-            { status: 400 }
-          );
+          return NextResponse.json({ error: 'УИН обязателен для этого действия' }, { status: 400 });
         }
-        newStatus = 'uin_assigned';
-        notificationMsg = `УИН присвоен мероприятию "${event.title}" — передано в АГД для добавления в календарь`;
-        notificationType = 'info';
-        targetDepartments = ['АГД', 'Методология', 'Организация', 'Аналитика', 'Координация'];
+        newStatus = 'agd_date_review';
+        decision = 'uin_assigned';
+        if (uin) updateData.uin = uin;
+        notificationMsg = `УИН присвоен мероприятию "${event.title}" — передано в АГД на проверку`;
+        notificationType = 'approval';
         break;
       }
 
+      case 'agd_approve':
       case 'add_to_calendar': {
-        // АГД: добавить в календарь → статус approved (готово к работе)
-        if (event.status !== 'uin_assigned' && event.status !== 'approved') {
-          return NextResponse.json(
-            { error: 'Добавить в календарь можно после присвоения УИН' },
-            { status: 400 }
-          );
+        if (!canUseStage(authUser, 'agd_date_review')) {
+          return NextResponse.json({ error: 'Поставить мероприятие в календарь может руководитель АГД' }, { status: 403 });
         }
-        newStatus = 'approved';
-        notificationMsg = `Мероприятие "${event.title}" добавлено в календарь АГД — передано в Департамент организации для исполнения`;
-        notificationType = 'info';
-        targetDepartments = ['Организация', 'Методология', 'Координация', 'Аналитика'];
+        const invalid = requireStatus(
+          event.status,
+          ['agd_date_review', 'uin_assigned', 'approved'],
+          'Добавить в календарь можно только после присвоения УИН и проверки АГД'
+        );
+        if (invalid) return invalid;
+        newStatus = 'calendar_approved';
+        decision = 'agd_approved';
+        updateData.calendarAdded = true;
+        notificationMsg = `Мероприятие "${event.title}" согласовано АГД и поставлено в календарь`;
+        notificationType = 'approval';
         break;
       }
 
-      case 'reject': {
-        // Координация: отклонить → rejected (возврат в draft)
-        if (event.status !== 'pending_approval') {
-          return NextResponse.json(
-            { error: 'Отклонить можно только мероприятие на согласовании' },
-            { status: 400 }
-          );
-        }
-        newStatus = 'rejected';
-        notificationMsg = `Мероприятие "${event.title}" отклонено Департаментом координации`;
-        notificationType = 'warning';
-        targetDepartments = ['Методология'];
-        break;
-      }
-
+      case 'accept_organization':
       case 'start': {
-        // Организация: взять в работу
-        const missingFields: string[] = [];
-        if (!event.venue) {
-          missingFields.push('Площадка проведения');
+        if (!(authUser.role === 'admin' || isManagerOf(authUser, 'organization'))) {
+          return NextResponse.json({ error: 'Взять мероприятие в работу может руководитель организации' }, { status: 403 });
         }
-        if (!event.participantCount || event.participantCount <= 0) {
-          missingFields.push('Количество участников');
-        }
-        if (missingFields.length > 0) {
-          return NextResponse.json(
-            { error: `Для начала работы необходимо заполнить: ${missingFields.join(', ')}` },
-            { status: 400 }
-          );
-        }
-        if (event.status !== 'approved') {
-          return NextResponse.json(
-            { error: 'Начать работу можно только с согласованным мероприятием' },
-            { status: 400 }
-          );
-        }
+        const invalid = requireStatus(
+          event.status,
+          ['calendar_approved', 'organization_assignment', 'approved'],
+          'Взять в работу можно только мероприятие, согласованное и поставленное в календарь'
+        );
+        if (invalid) return invalid;
         newStatus = 'in_progress';
-        notificationMsg = `Мероприятие "${event.title}" взято в работу Департаментом организации`;
+        decision = 'accepted_by_organization';
+        notificationMsg = `Мероприятие "${event.title}" принято в работу департаментом организации`;
         notificationType = 'info';
-        targetDepartments = ['Методология', 'Координация', 'АГД', 'Аналитика'];
         break;
       }
 
       case 'complete': {
-        // Организация: отметить что мероприятие проведено → pending_actual_budget
-        // (идёт в Методологию для внесения фактического бюджета)
-        if (event.status !== 'in_progress') {
-          return NextResponse.json(
-            { error: 'Завершить можно только мероприятие в работе' },
-            { status: 400 }
-          );
+        if (!(authUser.role === 'admin' || authUser.department === 'organization')) {
+          return NextResponse.json({ error: 'Отметить проведение может департамент организации' }, { status: 403 });
         }
-        newStatus = 'pending_actual_budget';
-        notificationMsg = `Мероприятие "${event.title}" проведено — передано в Департамент методологии для внесения фактического бюджета`;
+        const invalid = requireStatus(event.status, ['in_progress'], 'Проведенным можно отметить только мероприятие в работе');
+        if (invalid) return invalid;
+        newStatus = 'event_finished';
+        decision = 'event_finished';
+        notificationMsg = `Мероприятие "${event.title}" проведено — передано создателю в методологию для фактического бюджета`;
         notificationType = 'info';
-        targetDepartments = ['Методология', 'Координация', 'Аналитика'];
         break;
       }
 
       case 'submit_actual_budget': {
-        // Методология: внести фактический бюджет и отправить на согласование
-        if (event.status !== 'pending_actual_budget') {
-          return NextResponse.json(
-            { error: 'Внести фактический бюджет можно только для мероприятия, ожидающего фактический бюджет' },
-            { status: 400 }
-          );
+        if (!canActAsOwner(authUser, event)) {
+          return NextResponse.json({ error: 'Фактический бюджет направляет создатель карточки' }, { status: 403 });
         }
-        // Check that actualCost is provided
+        const invalid = requireStatus(
+          event.status,
+          ['event_finished', 'pending_actual_budget'],
+          'Фактический бюджет можно направить после проведения мероприятия'
+        );
+        if (invalid) return invalid;
         if (!event.actualCost && event.actualCost !== 0) {
           return NextResponse.json(
             { error: 'Для отправки фактического бюджета необходимо указать фактические затраты' },
             { status: 400 }
           );
         }
-        newStatus = 'pending_actual_approval';
-        notificationMsg = `Фактический бюджет мероприятия "${event.title}" направлен на согласование в Департамент координации`;
+        newStatus = 'methodology_actual_budget_review';
+        decision = 'actual_budget_submitted';
+        notificationMsg = `Фактический бюджет мероприятия "${event.title}" направлен руководителю методологии`;
         notificationType = 'approval';
-        targetDepartments = ['Координация', 'Аналитика'];
+        break;
+      }
+
+      case 'methodology_approve_actual_budget': {
+        if (!canUseStage(authUser, 'methodology_actual_budget_review')) {
+          return NextResponse.json({ error: 'Фактический бюджет согласует руководитель методологии' }, { status: 403 });
+        }
+        const invalid = requireStatus(
+          event.status,
+          ['methodology_actual_budget_review'],
+          'Фактический бюджет не находится на согласовании методологии'
+        );
+        if (invalid) return invalid;
+        newStatus = 'coordination_actual_budget_review';
+        decision = 'actual_budget_methodology_approved';
+        notificationMsg = `Руководитель методологии согласовал фактический бюджет мероприятия "${event.title}"`;
+        notificationType = 'approval';
         break;
       }
 
       case 'approve_actual_budget': {
-        // Координация: согласовать фактический бюджет
-        if (event.status !== 'pending_actual_approval') {
-          return NextResponse.json(
-            { error: 'Согласовать фактический бюджет можно только для мероприятия на согласовании факта' },
-            { status: 400 }
-          );
+        if (!canUseStage(authUser, 'coordination_actual_budget_review')) {
+          return NextResponse.json({ error: 'Фактический бюджет согласует руководитель координации' }, { status: 403 });
         }
+        const invalid = requireStatus(
+          event.status,
+          ['coordination_actual_budget_review', 'pending_actual_approval'],
+          'Фактический бюджет не находится на согласовании координации'
+        );
+        if (invalid) return invalid;
         newStatus = 'actual_budget_approved';
-        notificationMsg = `Фактический бюджет мероприятия "${event.title}" согласован Департаментом координации — передано в Методологию для завершения`;
+        decision = 'actual_budget_approved';
+        updateData.actualBudgetApproved = true;
+        updateData.actualBudgetApprovedBy = changedBy;
+        updateData.actualBudgetApprovedAt = new Date();
+        notificationMsg = `Фактический бюджет мероприятия "${event.title}" согласован координацией`;
         notificationType = 'approval';
-        targetDepartments = ['Методология', 'Аналитика'];
         break;
       }
 
       case 'reject_actual_budget': {
-        // Координация: отклонить фактический бюджет → возврат в pending_actual_budget
-        if (event.status !== 'pending_actual_approval') {
-          return NextResponse.json(
-            { error: 'Отклонить фактический бюджет можно только для мероприятия на согласовании факта' },
-            { status: 400 }
-          );
+        const commentError = requireComment(comment, 'При возврате фактического бюджета нужна причина');
+        if (commentError) return commentError;
+        if (!canUseStage(authUser, 'coordination_actual_budget_review')) {
+          return NextResponse.json({ error: 'Фактический бюджет возвращает руководитель координации' }, { status: 403 });
         }
-        newStatus = 'pending_actual_budget';
-        notificationMsg = `Фактический бюджет мероприятия "${event.title}" отклонён Департаментом координации — возвращено в Методологию для корректировки`;
+        const invalid = requireStatus(
+          event.status,
+          ['coordination_actual_budget_review', 'pending_actual_approval'],
+          'Фактический бюджет не находится на согласовании координации'
+        );
+        if (invalid) return invalid;
+        newStatus = 'event_finished';
+        decision = 'actual_budget_revision_requested';
+        notificationMsg = `Фактический бюджет мероприятия "${event.title}" возвращен на корректировку. Причина: ${comment}`;
         notificationType = 'warning';
-        targetDepartments = ['Методология'];
         break;
       }
 
       case 'finalize_event': {
-        // Методология: финализировать мероприятие → completed
-        if (event.status !== 'actual_budget_approved') {
-          return NextResponse.json(
-            { error: 'Завершить мероприятие можно только после согласования фактического бюджета' },
-            { status: 400 }
-          );
+        if (!canActAsOwner(authUser, event)) {
+          return NextResponse.json({ error: 'Закрыть мероприятие может создатель карточки' }, { status: 403 });
         }
-        newStatus = 'completed';
-        notificationMsg = `Мероприятие "${event.title}" завершено — финальные данные переданы в Департамент аналитики`;
+        const invalid = requireStatus(
+          event.status,
+          ['actual_budget_approved'],
+          'Закрыть мероприятие можно только после согласования фактического бюджета'
+        );
+        if (invalid) return invalid;
+        newStatus = 'archived';
+        decision = 'archived';
+        updateData.archivedAt = new Date();
+        notificationMsg = `Мероприятие "${event.title}" закрыто и направлено в архив`;
         notificationType = 'info';
-        targetDepartments = ['Методология', 'Координация', 'АГД', 'Организация', 'Аналитика'];
         break;
       }
 
+      case 'request_cancel': {
+        const commentError = requireComment(comment, 'Для запроса отмены нужно указать причину');
+        if (commentError) return commentError;
+        if (!canActAsOwner(authUser, event) && !isManagerOf(authUser, 'methodology')) {
+          return NextResponse.json({ error: 'Отмену может запросить создатель карточки или руководитель методологии' }, { status: 403 });
+        }
+        if (FINAL_STATUSES.has(event.status)) {
+          return NextResponse.json({ error: 'Нельзя отменить финализированное мероприятие' }, { status: 400 });
+        }
+        newStatus = 'cancel_requested';
+        decision = 'cancel_requested';
+        updateData.cancelRequestedAt = new Date();
+        updateData.cancelRequestedBy = authUser.id;
+        updateData.cancelReason = comment;
+        notificationMsg = `Запрошена отмена мероприятия "${event.title}". Причина: ${comment}`;
+        notificationType = 'warning';
+        break;
+      }
+
+      case 'confirm_cancel':
       case 'cancel': {
-        // Любой: отменить
-        if (event.status === 'completed' || event.status === 'cancelled') {
-          return NextResponse.json(
-            { error: 'Нельзя отменить завершённое или уже отменённое мероприятие' },
-            { status: 400 }
-          );
+        if (!(authUser.role === 'admin' || isManagerOf(authUser, 'methodology'))) {
+          return NextResponse.json({ error: 'Отмену подтверждает руководитель методологии' }, { status: 403 });
+        }
+        const invalid = action === 'confirm_cancel'
+          ? requireStatus(event.status, ['cancel_requested'], 'Подтвердить можно только запрошенную отмену')
+          : null;
+        if (invalid) return invalid;
+        if (FINAL_STATUSES.has(event.status) && event.status !== 'cancel_requested') {
+          return NextResponse.json({ error: 'Нельзя отменить финализированное мероприятие' }, { status: 400 });
         }
         newStatus = 'cancelled';
+        decision = 'cancelled';
+        if (comment) updateData.cancelReason = comment;
         notificationMsg = `Мероприятие "${event.title}" отменено`;
         notificationType = 'warning';
-        targetDepartments = ['Методология', 'Координация', 'АГД', 'Организация', 'Аналитика'];
         break;
       }
 
@@ -339,59 +481,67 @@ export async function POST(
         return NextResponse.json({ error: 'Неизвестное действие' }, { status: 400 });
     }
 
-    const updateData: any = {
-      status: newStatus,
-      budgetApproved: action === 'approve_budget' ? true : event.budgetApproved,
-      budgetApprovedBy: action === 'approve_budget' ? (changedBy || 'Координация') : event.budgetApprovedBy,
-      budgetApprovedAt: action === 'approve_budget' ? new Date() : event.budgetApprovedAt,
-      coordinatorComment: comment || event.coordinatorComment,
-      calendarAdded: action === 'add_to_calendar' ? true : event.calendarAdded,
-    };
+    const oldStatus = event.status;
+    updateData.status = newStatus;
 
-    // При присвоении УИН — сохраняем УИН
-    if (action === 'assign_uin' && uin) {
-      updateData.uin = uin;
-    }
-
-    // При approve_budget с УИН — тоже сохраняем
-    if (action === 'approve_budget' && uin && uin.trim().length > 0) {
-      updateData.uin = uin;
-    }
-
-    // При согласовании фактического бюджета — помечаем
-    if (action === 'approve_actual_budget') {
-      updateData.actualBudgetApproved = true;
-      updateData.actualBudgetApprovedBy = changedBy || 'Координация';
-      updateData.actualBudgetApprovedAt = new Date();
-    }
-
-    const updatedEvent = await db.event.update({
-      where: { id },
-      data: updateData,
-    });
-
-    // Create change log
-    await db.changeLog.create({
-      data: {
-        eventId: id,
-        field: 'status',
-        oldValue: event.status,
-        newValue: newStatus,
-        changedBy: authUser.name,
-      },
-    });
-
-    // Create notifications for relevant departments
-    if (targetDepartments.length > 0) {
-      await db.notification.createMany({
-        data: targetDepartments.map(dept => ({
-          eventId: id,
-          department: dept,
-          message: notificationMsg + (comment ? `. Комментарий: ${comment}` : ''),
-          type: notificationType,
-        })),
+    const updatedEvent = await db.$transaction(async (tx) => {
+      const updated = await tx.event.update({
+        where: { id },
+        data: updateData,
       });
-    }
+
+      await tx.eventApproval.create({
+        data: {
+          eventId: id,
+          version: event.currentVersion,
+          stage,
+          decision,
+          comment: comment || null,
+          decidedBy: authUser.id,
+          role: authUser.role,
+          department: authUser.department,
+        },
+      });
+
+      if (oldStatus !== newStatus) {
+        await tx.changeLog.create({
+          data: {
+            eventId: id,
+            field: 'status',
+            oldValue: oldStatus,
+            newValue: newStatus,
+            changedBy: authUser.name,
+          },
+        });
+      }
+
+      if (createUinTask) {
+        await tx.task.create({
+          data: {
+            eventId: id,
+            category: 'coordination',
+            title: 'Присвоить УИН мероприятию',
+            description: 'Бюджет согласован. Необходимо присвоить УИН перед передачей карточки в АГД.',
+            assignee: changedBy,
+            priority: 'high',
+          },
+        });
+      }
+
+      const targetDepartments = notificationDepartmentsFor(newStatus);
+      if (targetDepartments.length > 0) {
+        await tx.notification.createMany({
+          data: targetDepartments.map(dept => ({
+            eventId: id,
+            department: dept,
+            message: notificationMsg + (comment && !notificationMsg.includes(comment) ? `. Комментарий: ${comment}` : ''),
+            type: notificationType,
+          })),
+        });
+      }
+
+      return updated;
+    });
 
     return NextResponse.json(updatedEvent);
   } catch (error: any) {

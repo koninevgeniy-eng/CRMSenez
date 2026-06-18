@@ -218,11 +218,11 @@ export function Sidebar({
           </div>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-amber-400" />
-            <span>Активных: <span className="font-semibold text-gray-700 dark:text-gray-300">{events.filter(e => !['completed', 'cancelled'].includes(e.status)).length}</span></span>
+            <span>Активных: <span className="font-semibold text-gray-700 dark:text-gray-300">{events.filter(e => !['archived', 'completed', 'cancelled'].includes(e.status)).length}</span></span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-green-400" />
-            <span>Завершено: <span className="font-semibold text-gray-700 dark:text-gray-300">{events.filter(e => e.status === 'completed').length}</span></span>
+            <span>Завершено: <span className="font-semibold text-gray-700 dark:text-gray-300">{events.filter(e => ['archived', 'completed'].includes(e.status)).length}</span></span>
           </div>
         </div>
       </div>

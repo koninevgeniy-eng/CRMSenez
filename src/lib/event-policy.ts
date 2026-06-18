@@ -1,22 +1,41 @@
 export const EVENT_STATUSES = [
   'draft',
+  'methodology_review',
+  'revision_requested',
+  'coordination_budget_review',
+  'uin_assignment',
+  'agd_date_review',
+  'calendar_approved',
+  'organization_assignment',
+  'in_progress',
+  'event_finished',
+  'methodology_actual_budget_review',
+  'coordination_actual_budget_review',
+  'actual_budget_approved',
+  'cancel_requested',
+  'cancelled',
+  'archived',
+  // Legacy statuses kept temporarily for existing imported/demo data.
   'pending_approval',
   'budget_approved',
   'uin_assigned',
   'approved',
-  'in_progress',
   'pending_actual_budget',
   'pending_actual_approval',
-  'actual_budget_approved',
   'completed',
   'rejected',
-  'cancelled',
 ] as const;
 
 export const EVENT_SCALAR_FIELDS = [
   'uin',
   'title',
   'status',
+  'ownerId',
+  'currentVersion',
+  'archivedAt',
+  'cancelRequestedAt',
+  'cancelRequestedBy',
+  'cancelReason',
   'programDirector',
   'coOrganizers',
   'startDate',
@@ -79,12 +98,20 @@ const DATE_FIELDS = new Set<EventScalarField>([
   'setupEndDate',
   'teardownStartDate',
   'teardownEndDate',
+  'archivedAt',
+  'cancelRequestedAt',
   'budgetApprovedAt',
   'actualBudgetApprovedAt',
 ]);
 
 const WORKFLOW_ONLY_FIELDS = new Set<EventScalarField>([
   'status',
+  'ownerId',
+  'currentVersion',
+  'archivedAt',
+  'cancelRequestedAt',
+  'cancelRequestedBy',
+  'cancelReason',
   'uin',
   'calendarAdded',
   'budgetApproved',
@@ -179,7 +206,7 @@ export interface EventPolicyUser {
 
 export function canCreateEvent(user: EventPolicyUser): boolean {
   return user.role === 'admin'
-    || (user.role === 'manager' && user.department === 'methodology');
+    || (user.department === 'methodology' && ['manager', 'employee'].includes(user.role));
 }
 
 export function canDeleteEvent(user: EventPolicyUser): boolean {

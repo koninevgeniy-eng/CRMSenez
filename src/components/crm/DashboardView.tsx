@@ -54,11 +54,21 @@ export function DashboardView({
   loading = false,
 }: DashboardViewProps) {
   const totalBudget = events.reduce((s, e) => s + (e.budget || 0), 0);
-  const activeEvents = events.filter(e => ['in_progress', 'approved', 'budget_approved', 'uin_assigned'].includes(e.status));
-  const pendingEvents = events.filter(e => ['draft', 'pending_approval'].includes(e.status));
-  const completedEvents = events.filter(e => e.status === 'completed');
+  const activeEvents = events.filter(e => [
+    'coordination_budget_review',
+    'uin_assignment',
+    'agd_date_review',
+    'calendar_approved',
+    'organization_assignment',
+    'in_progress',
+    'approved',
+    'budget_approved',
+    'uin_assigned',
+  ].includes(e.status));
+  const pendingEvents = events.filter(e => ['draft', 'methodology_review', 'revision_requested', 'pending_approval', 'rejected'].includes(e.status));
+  const completedEvents = events.filter(e => ['archived', 'completed'].includes(e.status));
   const upcomingEvents = mounted ? events
-    .filter(e => e.startDate && new Date(e.startDate) > new Date() && e.status !== 'completed' && e.status !== 'cancelled')
+    .filter(e => e.startDate && new Date(e.startDate) > new Date() && !['archived', 'completed', 'cancelled'].includes(e.status))
     .sort((a, b) => new Date(a.startDate!).getTime() - new Date(b.startDate!).getTime())
     .slice(0, 5) : [];
 

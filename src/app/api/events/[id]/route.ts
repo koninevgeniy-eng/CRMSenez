@@ -41,6 +41,7 @@ const eventInclude = {
   payments: { orderBy: { createdAt: 'desc' } },
   notifications: { orderBy: { createdAt: 'desc' } },
   changeLogs: { orderBy: { createdAt: 'desc' } },
+  approvals: { orderBy: { createdAt: 'desc' } },
   assignments: {
     include: {
       user: {
@@ -150,7 +151,18 @@ export async function PUT(
     }
 
     // Validate date fields
-    const dateFieldNames = ['startDate', 'endDate', 'setupStartDate', 'setupEndDate', 'teardownStartDate', 'teardownEndDate', 'budgetApprovedAt'];
+    const dateFieldNames = [
+      'startDate',
+      'endDate',
+      'setupStartDate',
+      'setupEndDate',
+      'teardownStartDate',
+      'teardownEndDate',
+      'budgetApprovedAt',
+      'actualBudgetApprovedAt',
+      'archivedAt',
+      'cancelRequestedAt',
+    ];
     for (const field of dateFieldNames) {
       if (eventData[field] !== undefined && !isValidDate(eventData[field])) {
         return NextResponse.json(

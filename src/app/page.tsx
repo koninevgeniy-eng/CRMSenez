@@ -90,7 +90,7 @@ const CHART_COLORS = ['#10b981', '#f59e0b', '#3b82f6', '#ef4444', '#8b5cf6', '#e
 
 export default function CRMPage() {
   const { isAuthenticated, isLoading: authLoading, user, isManager, isAdmin, userDepartment, signOut } = useAuth();
-  const canCreateEvents = isAdmin || (isManager && userDepartment === 'methodology');
+  const canCreateEvents = isAdmin || userDepartment === 'methodology';
   const { theme, setTheme } = useTheme();
   const [activeDept, setActiveDept] = useState<AppDepartment>('dashboard');
 
@@ -432,16 +432,23 @@ export default function CRMPage() {
       if (res.ok) {
         const actionLabels: Record<string, string> = {
           submit_for_approval: 'Отправлено на согласование',
+          methodology_approve: 'Согласовано руководителем методологии',
+          request_revision: 'Карточка возвращена на доработку',
           approve_budget: 'Бюджет согласован',
           assign_uin: 'УИН присвоен — передано в АГД',
           add_to_calendar: 'Добавлено в календарь — передано в Организацию',
+          agd_approve: 'Даты согласованы — мероприятие поставлено в календарь',
+          accept_organization: 'Мероприятие принято департаментом организации',
           reject: 'Мероприятие отклонено',
           start: 'Мероприятие взято в работу',
           complete: 'Мероприятие проведено — передано в Методологию',
           submit_actual_budget: 'Фактический бюджет отправлен на согласование',
+          methodology_approve_actual_budget: 'Фактический бюджет согласован методологией',
           approve_actual_budget: 'Фактический бюджет согласован',
           reject_actual_budget: 'Фактический бюджет отклонён',
           finalize_event: 'Мероприятие завершено',
+          request_cancel: 'Запрошена отмена мероприятия',
+          confirm_cancel: 'Отмена мероприятия подтверждена',
           cancel: 'Мероприятие отменено',
         };
         toast({ title: actionLabels[action] || 'Действие выполнено', description: 'Статус обновлен успешно' });

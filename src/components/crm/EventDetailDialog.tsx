@@ -46,6 +46,7 @@ import {
   getStatusLabel, getStatusColor, formatDate, formatCurrency,
   canSubmitForApproval, canApproveBudget, canAssignUin, canAddToCalendar, canStartEvent, canCompleteEvent, canReject,
   canSubmitActualBudget, canApproveActualBudget, canRejectActualBudget, canFinalizeEvent,
+  canApproveMethodology, canApproveMethodologyActualBudget, canRequestCancel, canConfirmCancel,
 } from '@/lib/crm-utils';
 import { apiFetch } from '@/lib/api-fetch';
 import { EVENT_FORM_FIELDS } from '@/lib/event-policy';
@@ -128,6 +129,19 @@ function EventDetailDialog({ event, open, onClose, onUpdate, onDelete, onWorkflo
     setFormData((prev: any) => ({ ...prev, [field]: value }));
   };
 
+  const askRequiredComment = (message: string) => {
+    const comment = prompt(message);
+    if (!comment?.trim()) {
+      toast({
+        title: 'Нужен комментарий',
+        description: 'Возврат или отмена карточки требуют указать причину.',
+        variant: 'destructive',
+      });
+      return null;
+    }
+    return comment.trim();
+  };
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-[100vw] sm:max-w-[95vw] sm:max-w-4xl h-[100dvh] sm:h-auto sm:max-h-[90vh] overflow-hidden crm-dialog-enter crm-dialog-glow p-2 sm:p-6 gap-2 sm:gap-4" style={{ display: 'flex', flexDirection: 'column' }}>
@@ -150,11 +164,30 @@ function EventDetailDialog({ event, open, onClose, onUpdate, onDelete, onWorkflo
               {WORKFLOW_STAGES.map((stage, index) => {
                 // Calculate effective index for the progress indicator
                 const statusOrder: Record<string, number> = {
-                  'draft': 0, 'pending_approval': 1, 'budget_approved': 2,
-                  'uin_assigned': 2, 'approved': 3, 'in_progress': 4,
-                  'pending_actual_budget': 5, 'pending_actual_approval': 6,
-                  'actual_budget_approved': 6, 'completed': 7,
-                  'rejected': -1, 'cancelled': -1,
+                  'draft': 0,
+                  'methodology_review': 1,
+                  'revision_requested': 0,
+                  'coordination_budget_review': 2,
+                  'uin_assignment': 3,
+                  'agd_date_review': 4,
+                  'calendar_approved': 5,
+                  'organization_assignment': 5,
+                  'in_progress': 6,
+                  'event_finished': 7,
+                  'methodology_actual_budget_review': 8,
+                  'coordination_actual_budget_review': 9,
+                  'actual_budget_approved': 9,
+                  'archived': 10,
+                  'pending_approval': 2,
+                  'budget_approved': 3,
+                  'uin_assigned': 4,
+                  'approved': 5,
+                  'pending_actual_budget': 7,
+                  'pending_actual_approval': 9,
+                  'completed': 10,
+                  'rejected': -1,
+                  'cancel_requested': -1,
+                  'cancelled': -1,
                 };
                 const effectiveIdx = statusOrder[event.status] ?? 0;
                 const effCompleted = index < effectiveIdx;
@@ -267,7 +300,7 @@ function EventDetailDialog({ event, open, onClose, onUpdate, onDelete, onWorkflo
             </TabsContent>
 
             <TabsContent value="speakers" className="mt-0">
-              <SpeakersTab speakers={event.speakers} eventId={event.id} onUpdate={onUpdate} editing={editing} departmentContext={departmentContext} isClosingStage={event.status === 'in_progress' || event.status === 'completed'} />
+              <SpeakersTab speakers={event.speakers} eventId={event.id} onUpdate={onUpdate} editing={editing} departmentContext={departmentContext} isClosingStage={['in_progress', 'event_finished', 'actual_budget_approved', 'archived', 'completed'].includes(event.status)} />
             </TabsContent>
 
             <TabsContent value="budget" className="mt-0">
@@ -323,10 +356,10 @@ function EventDetailDialog({ event, open, onClose, onUpdate, onDelete, onWorkflo
                     const getChangeIcon = () => {
                       if (isStatusChange) {
                         const newStatus = log.newValue as EventStatus;
-                        if (['completed', 'budget_approved', 'approved'].includes(newStatus)) return <CheckCircle2 className="h-4 w-4 text-[#E4002B]" />;
+                        if (['completed', 'archived', 'budget_approved', 'approved', 'calendar_approved', 'actual_budget_approved'].includes(newStatus)) return <CheckCircle2 className="h-4 w-4 text-[#E4002B]" />;
                         if (['rejected', 'cancelled'].includes(newStatus)) return <XCircle className="h-4 w-4 text-red-500" />;
                         if (newStatus === 'in_progress') return <Play className="h-4 w-4 text-blue-500" />;
-                        if (newStatus === 'pending_approval') return <Send className="h-4 w-4 text-amber-500" />;
+                        if (['pending_approval', 'methodology_review', 'coordination_budget_review', 'agd_date_review', 'methodology_actual_budget_review', 'coordination_actual_budget_review'].includes(newStatus)) return <Send className="h-4 w-4 text-amber-500" />;
                         return <Clock className="h-4 w-4 text-gray-500" />;
                       }
                       return <Edit className="h-4 w-4 text-blue-400" />;
@@ -384,6 +417,7 @@ function EventDetailDialog({ event, open, onClose, onUpdate, onDelete, onWorkflo
         <DialogFooter className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between border-t pt-2 sm:pt-4 gap-2 overflow-x-auto crm-scroll">
           {canManageWorkflow && <div className="flex gap-2 flex-wrap">
             {canSubmitForApproval(event.status) && <Button size="sm" className="gap-1.5 bg-[#E4002B] hover:bg-[#BD0024] crm-btn-hover crm-pulse-btn whitespace-nowrap" onClick={() => onWorkflowAction(event.id, 'submit_for_approval')}><Send className="h-3 w-3" />На согласование</Button>}
+            {canApproveMethodology(event.status) && <Button size="sm" className="gap-1.5 bg-[#E4002B] hover:bg-[#BD0024] whitespace-nowrap" onClick={() => onWorkflowAction(event.id, 'methodology_approve')}><ThumbsUp className="h-3 w-3" />Согласовать методологией</Button>}
             {canApproveBudget(event.status) && <Button size="sm" className="gap-1.5 bg-[#E4002B] hover:bg-[#BD0024] whitespace-nowrap" onClick={() => {
               const uinValue = prompt('Введите УИН (необязательно):');
               onWorkflowAction(event.id, 'approve_budget', undefined, uinValue || undefined);
@@ -396,10 +430,22 @@ function EventDetailDialog({ event, open, onClose, onUpdate, onDelete, onWorkflo
             {canStartEvent(event.status) && <Button size="sm" className="gap-1.5 bg-blue-600 hover:bg-blue-700 whitespace-nowrap" onClick={() => onWorkflowAction(event.id, 'start')}><Play className="h-3 w-3" />Взять в работу</Button>}
             {canCompleteEvent(event.status) && <Button size="sm" className="gap-1.5 bg-[#164194] hover:bg-[#190B62] whitespace-nowrap" onClick={() => onWorkflowAction(event.id, 'complete')}><CheckCircle2 className="h-3 w-3" />Мероприятие проведено</Button>}
             {canSubmitActualBudget(event.status) && <Button size="sm" className="gap-1.5 bg-orange-600 hover:bg-orange-700 whitespace-nowrap" onClick={() => onWorkflowAction(event.id, 'submit_actual_budget')}><Banknote className="h-3 w-3" />Отправить факт. бюджет</Button>}
+            {canApproveMethodologyActualBudget(event.status) && <Button size="sm" className="gap-1.5 bg-[#E4002B] hover:bg-[#BD0024] whitespace-nowrap" onClick={() => onWorkflowAction(event.id, 'methodology_approve_actual_budget')}><ThumbsUp className="h-3 w-3" />Согласовать факт. методологией</Button>}
             {canApproveActualBudget(event.status) && <Button size="sm" className="gap-1.5 bg-purple-600 hover:bg-purple-700 whitespace-nowrap" onClick={() => onWorkflowAction(event.id, 'approve_actual_budget')}><ThumbsUp className="h-3 w-3" />Согласовать факт. бюджет</Button>}
-            {canRejectActualBudget(event.status) && <Button size="sm" variant="outline" className="gap-1.5 border-orange-300 text-orange-700 whitespace-nowrap" onClick={() => onWorkflowAction(event.id, 'reject_actual_budget', 'Фактический бюджет отклонён')}><ThumbsDown className="h-3 w-3" />Отклонить факт. бюджет</Button>}
+            {canRejectActualBudget(event.status) && <Button size="sm" variant="outline" className="gap-1.5 border-orange-300 text-orange-700 whitespace-nowrap" onClick={() => {
+              const comment = askRequiredComment('Почему фактический бюджет возвращается на доработку?');
+              if (comment) onWorkflowAction(event.id, 'reject_actual_budget', comment);
+            }}><ThumbsDown className="h-3 w-3" />Отклонить факт. бюджет</Button>}
             {canFinalizeEvent(event.status) && <Button size="sm" className="gap-1.5 bg-green-600 hover:bg-green-700 whitespace-nowrap" onClick={() => onWorkflowAction(event.id, 'finalize_event')}><CheckCircle2 className="h-3 w-3" />Завершить мероприятие</Button>}
-            {canReject(event.status) && event.status === 'pending_approval' && <Button size="sm" variant="destructive" className="gap-1.5 whitespace-nowrap" onClick={() => onWorkflowAction(event.id, 'reject', 'Отклонено')}><ThumbsDown className="h-3 w-3" />Отклонить</Button>}
+            {canReject(event.status) && <Button size="sm" variant="destructive" className="gap-1.5 whitespace-nowrap" onClick={() => {
+              const comment = askRequiredComment('Почему карточка возвращается на доработку?');
+              if (comment) onWorkflowAction(event.id, 'request_revision', comment);
+            }}><ThumbsDown className="h-3 w-3" />На доработку</Button>}
+            {canConfirmCancel(event.status) && <Button size="sm" variant="destructive" className="gap-1.5 whitespace-nowrap" onClick={() => onWorkflowAction(event.id, 'confirm_cancel')}><XCircle className="h-3 w-3" />Подтвердить отмену</Button>}
+            {canRequestCancel(event.status) && <Button size="sm" variant="outline" className="gap-1.5 border-red-200 text-red-700 whitespace-nowrap" onClick={() => {
+              const comment = askRequiredComment('Почему запрашивается отмена мероприятия?');
+              if (comment) onWorkflowAction(event.id, 'request_cancel', comment);
+            }}><XCircle className="h-3 w-3" />Запросить отмену</Button>}
           </div>}
           <div className="flex gap-2">
             {canDuplicate && <Button variant="outline" size="sm" className="gap-1.5 whitespace-nowrap" onClick={onDuplicate}><Copy className="h-3 w-3" />Дублировать</Button>}

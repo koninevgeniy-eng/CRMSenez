@@ -37,27 +37,32 @@ export function getDaysUntil(date?: string | null): number {
 
 /** Методология может отправить на согласование из черновика или после отклонения */
 export function canSubmitForApproval(status: EventStatus): boolean {
-  return status === 'draft' || status === 'rejected';
+  return status === 'draft' || status === 'revision_requested' || status === 'rejected';
+}
+
+/** Руководитель методологии согласовывает карточку перед передачей в координацию */
+export function canApproveMethodology(status: EventStatus): boolean {
+  return status === 'methodology_review';
 }
 
 /** Координация может согласовать бюджет (+ УИН) из статуса "на согласовании" */
 export function canApproveBudget(status: EventStatus): boolean {
-  return status === 'pending_approval';
+  return status === 'coordination_budget_review' || status === 'pending_approval';
 }
 
 /** Координация может присвоить УИН после согласования бюджета */
 export function canAssignUin(status: EventStatus): boolean {
-  return status === 'budget_approved';
+  return status === 'uin_assignment' || status === 'budget_approved';
 }
 
 /** АГД может добавить в календарь после присвоения УИН */
 export function canAddToCalendar(status: EventStatus): boolean {
-  return status === 'uin_assigned';
+  return status === 'agd_date_review' || status === 'uin_assigned';
 }
 
 /** Организация может начать работу после одобрения АГД */
 export function canStartEvent(status: EventStatus): boolean {
-  return status === 'approved';
+  return status === 'calendar_approved' || status === 'organization_assignment' || status === 'approved';
 }
 
 /** Организатор может отметить мероприятие выполненным (→ ожидает факт. бюджет) */
@@ -67,17 +72,22 @@ export function canCompleteEvent(status: EventStatus): boolean {
 
 /** Методология может внести фактический бюджет и отправить на согласование */
 export function canSubmitActualBudget(status: EventStatus): boolean {
-  return status === 'pending_actual_budget';
+  return status === 'event_finished' || status === 'pending_actual_budget';
+}
+
+/** Руководитель методологии согласовывает фактический бюджет перед координацией */
+export function canApproveMethodologyActualBudget(status: EventStatus): boolean {
+  return status === 'methodology_actual_budget_review';
 }
 
 /** Координация может согласовать фактический бюджет */
 export function canApproveActualBudget(status: EventStatus): boolean {
-  return status === 'pending_actual_approval';
+  return status === 'coordination_actual_budget_review' || status === 'pending_actual_approval';
 }
 
 /** Координация может отклонить фактический бюджет */
 export function canRejectActualBudget(status: EventStatus): boolean {
-  return status === 'pending_actual_approval';
+  return status === 'coordination_actual_budget_review' || status === 'pending_actual_approval';
 }
 
 /** Методология может финализировать мероприятие после согласования факт. бюджета */
@@ -87,7 +97,23 @@ export function canFinalizeEvent(status: EventStatus): boolean {
 
 /** Отклонить мероприятие (координация) — на этапе согласования плана или факта */
 export function canReject(status: EventStatus): boolean {
-  return status === 'pending_approval' || status === 'pending_actual_approval';
+  return [
+    'methodology_review',
+    'coordination_budget_review',
+    'agd_date_review',
+    'methodology_actual_budget_review',
+    'coordination_actual_budget_review',
+    'pending_approval',
+    'pending_actual_approval',
+  ].includes(status);
+}
+
+export function canRequestCancel(status: EventStatus): boolean {
+  return !['cancel_requested', 'cancelled', 'archived', 'completed'].includes(status);
+}
+
+export function canConfirmCancel(status: EventStatus): boolean {
+  return status === 'cancel_requested';
 }
 
 export function truncateText(text: string, maxLength: number): string {

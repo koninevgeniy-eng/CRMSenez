@@ -35,11 +35,24 @@ export function CoordinationView({
   const [correctionEdits, setCorrectionEdits] = useState<Record<string, Record<number, number>>>({});
   const [correctionComments, setCorrectionComments] = useState<Record<string, string>>({});
 
-  const pendingEvents = events.filter(e => e.status === 'pending_approval');
-  const budgetApprovedEvents = events.filter(e => e.status === 'budget_approved');
-  const pendingActualEvents = events.filter(e => e.status === 'pending_actual_approval');
-  const approvedEvents = events.filter(e => ['approved', 'uin_assigned', 'in_progress', 'pending_actual_budget', 'actual_budget_approved', 'completed'].includes(e.status));
-  const rejectedEvents = events.filter(e => e.status === 'rejected');
+  const pendingEvents = events.filter(e => ['coordination_budget_review', 'pending_approval'].includes(e.status));
+  const budgetApprovedEvents = events.filter(e => ['uin_assignment', 'budget_approved'].includes(e.status));
+  const pendingActualEvents = events.filter(e => ['coordination_actual_budget_review', 'pending_actual_approval'].includes(e.status));
+  const approvedEvents = events.filter(e => [
+    'agd_date_review',
+    'calendar_approved',
+    'organization_assignment',
+    'approved',
+    'uin_assigned',
+    'in_progress',
+    'event_finished',
+    'methodology_actual_budget_review',
+    'actual_budget_approved',
+    'archived',
+    'pending_actual_budget',
+    'completed',
+  ].includes(e.status));
+  const rejectedEvents = events.filter(e => ['revision_requested', 'rejected'].includes(e.status));
   const totalPendingBudget = pendingEvents.reduce((s, e) => s + (e.budget || 0), 0);
   const totalApprovedBudget = approvedEvents.reduce((s, e) => s + (e.budget || 0), 0);
 
@@ -473,7 +486,7 @@ export function CoordinationView({
       {/* Speaker Cost Approvals — for events with pending speaker costs */}
       {(() => {
         const eventsWithPendingSpeakerCosts = events.filter(e =>
-          ['approved', 'uin_assigned', 'in_progress', 'completed'].includes(e.status) &&
+          ['agd_date_review', 'calendar_approved', 'organization_assignment', 'approved', 'uin_assigned', 'in_progress', 'event_finished', 'actual_budget_approved', 'archived', 'completed'].includes(e.status) &&
           e.speakers.some(s => s.costApprovalStatus === 'pending' && s.actualCost !== undefined && s.actualCost > 0)
         );
         if (eventsWithPendingSpeakerCosts.length === 0) return null;

@@ -34,10 +34,17 @@ export function OrganizationView({
   setShowEventDialog,
   fetchEvents,
 }: OrganizationViewProps) {
-  // Организация видит: approved (надо взять в работу) + in_progress (в работе)
-  const newEvents = events.filter(e => e.status === 'approved');
+  // Организация видит: согласованные АГД мероприятия + in_progress (в работе)
+  const newEvents = events.filter(e => ['calendar_approved', 'organization_assignment', 'approved'].includes(e.status));
   const inProgressEvents = events.filter(e => e.status === 'in_progress');
-  const completedEvents = events.filter(e => e.status === 'pending_actual_budget' || e.status === 'pending_actual_approval' || e.status === 'actual_budget_approved');
+  const completedEvents = events.filter(e => [
+    'event_finished',
+    'methodology_actual_budget_review',
+    'coordination_actual_budget_review',
+    'pending_actual_budget',
+    'pending_actual_approval',
+    'actual_budget_approved',
+  ].includes(e.status));
   const activeEvents = [...newEvents, ...inProgressEvents];
   // Сотрудники организации для назначения
   const orgUsers = users.filter(u => u.department === 'organization' && u.isActive);

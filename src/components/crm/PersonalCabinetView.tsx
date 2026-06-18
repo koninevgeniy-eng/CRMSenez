@@ -65,7 +65,7 @@ export function PersonalCabinetView({
   const pendingTasks = myTasks.filter((t: any) => !t.task?.completed).length;
   const upcomingEvents = myEventAssignments.filter((a: any) => {
     const e = a.event;
-    return e && e.startDate && new Date(e.startDate) > new Date() && e.status !== 'completed' && e.status !== 'cancelled';
+    return e && e.startDate && new Date(e.startDate) > new Date() && !['archived', 'completed', 'cancelled'].includes(e.status);
   }).length;
 
   const handleToggleTask = async (taskId: string, currentCompleted: boolean) => {

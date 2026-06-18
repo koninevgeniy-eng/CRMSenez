@@ -70,17 +70,20 @@ export async function GET(request: NextRequest) {
     if (department === 'coordination') {
       where.status = {
         in: [
+          'coordination_budget_review',
+          'uin_assignment',
+          'coordination_actual_budget_review',
+          'actual_budget_approved',
           'pending_approval',
           'budget_approved',
           'uin_assigned',
           'pending_actual_approval',
-          'actual_budget_approved',
         ],
       };
     } else if (department === 'agd') {
       // AGD sees all for calendar
     } else if (department === 'organization') {
-      where.status = { in: ['approved', 'in_progress'] };
+      where.status = { in: ['calendar_approved', 'organization_assignment', 'in_progress', 'event_finished', 'approved'] };
     } else if (department === 'methodology') {
       // Methodology sees all
     }
@@ -106,6 +109,7 @@ export async function GET(request: NextRequest) {
       accommodations: true,
       notifications: { orderBy: { createdAt: 'desc' }, take: 5 },
       changeLogs: { orderBy: { createdAt: 'desc' }, take: 10 },
+      approvals: { orderBy: { createdAt: 'desc' }, take: 20 },
       payments: { orderBy: { createdAt: 'desc' } },
       assignments: {
         include: {
@@ -272,6 +276,7 @@ export async function POST(request: NextRequest) {
     const event = await db.event.create({
       data: {
         ...createData,
+        ownerId: authUser.id,
         hasProgram: eventData.hasProgram ?? false,
         hasPlan: eventData.hasPlan ?? false,
         isFavorite: eventData.isFavorite ?? false,
@@ -369,14 +374,11 @@ export async function POST(request: NextRequest) {
         },
         notifications: {
           create: [
-            { department: 'АГД', message: `Создано новое мероприятие: ${eventData.title}`, type: 'info' },
-            { department: 'Координация', message: `Новое мероприятие на согласование: ${eventData.title}`, type: 'approval' },
-            { department: 'Организация', message: `Новое мероприятие: ${eventData.title}`, type: 'info' },
-            { department: 'Аналитика', message: `Новое мероприятие: ${eventData.title}`, type: 'info' },
+            { department: 'Методология', message: `Создан черновик мероприятия: ${eventData.title}`, type: 'info' },
           ],
         },
         changeLogs: {
-          create: { field: 'status', newValue: 'draft', changedBy: 'Методология' },
+          create: { field: 'status', newValue: 'draft', changedBy: authUser.name },
         },
       } as Prisma.EventCreateInput,
       include: {
@@ -390,6 +392,7 @@ export async function POST(request: NextRequest) {
         accommodations: true,
         notifications: true,
         changeLogs: true,
+        approvals: true,
         payments: true,
         assignments: {
           include: {

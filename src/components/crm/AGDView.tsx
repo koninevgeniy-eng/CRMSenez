@@ -52,8 +52,8 @@ export function AGDView({
   // VIP events
   const vipEvents = events.filter(e => e.vipGuests);
 
-  // Events waiting for calendar (uin_assigned)
-  const waitingForCalendar = events.filter(e => e.status === 'uin_assigned');
+  // Events waiting for calendar approval
+  const waitingForCalendar = events.filter(e => ['agd_date_review', 'uin_assigned'].includes(e.status));
 
   return (
     <div className="space-y-6">
@@ -192,7 +192,7 @@ export function AGDView({
             <CardContent className="space-y-2">
               <div className="flex justify-between text-xs sm:text-sm"><span className="text-muted-foreground">В процессе</span><span className="font-medium">{events.filter(e => e.status === 'in_progress').length}</span></div>
               <div className="flex justify-between text-xs sm:text-sm"><span className="text-muted-foreground">Предстоящие</span><span className="font-medium">{mounted ? events.filter(e => e.startDate && new Date(e.startDate) > new Date()).length : '–'}</span></div>
-              <div className="flex justify-between text-xs sm:text-sm"><span className="text-muted-foreground">Завершенные</span><span className="font-medium">{events.filter(e => e.status === 'completed').length}</span></div>
+              <div className="flex justify-between text-xs sm:text-sm"><span className="text-muted-foreground">Завершенные</span><span className="font-medium">{events.filter(e => ['archived', 'completed'].includes(e.status)).length}</span></div>
             </CardContent>
           </Card>
         </div>

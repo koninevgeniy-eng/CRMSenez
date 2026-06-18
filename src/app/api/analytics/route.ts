@@ -25,15 +25,27 @@ export async function GET(request: NextRequest) {
 
     // Basic stats
     const totalEvents = events.length;
-    const completedEvents = events.filter(e => e.status === 'completed').length;
+    const completedEvents = events.filter(e => ['archived', 'completed'].includes(e.status)).length;
     const inProgressEvents = events.filter(e => e.status === 'in_progress').length;
     const pendingEvents = events.filter(e => [
       'draft',
+      'methodology_review',
+      'revision_requested',
+      'coordination_budget_review',
+      'uin_assignment',
+      'agd_date_review',
+      'calendar_approved',
+      'organization_assignment',
+      'event_finished',
+      'methodology_actual_budget_review',
+      'coordination_actual_budget_review',
+      'cancel_requested',
       'pending_approval',
       'budget_approved',
       'uin_assigned',
       'pending_actual_budget',
       'pending_actual_approval',
+      'rejected',
     ].includes(e.status)).length;
 
     // Budget analysis
