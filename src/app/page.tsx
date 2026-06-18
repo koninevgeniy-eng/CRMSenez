@@ -430,6 +430,7 @@ export default function CRMPage() {
         body: JSON.stringify(body),
       });
       if (res.ok) {
+        const result = await res.json();
         const actionLabels: Record<string, string> = {
           submit_for_approval: 'Отправлено на согласование',
           methodology_approve: 'Согласовано руководителем методологии',
@@ -452,6 +453,13 @@ export default function CRMPage() {
           cancel: 'Мероприятие отменено',
         };
         toast({ title: actionLabels[action] || 'Действие выполнено', description: 'Статус обновлен успешно' });
+        if (result?.warning) {
+          toast({
+            title: 'Предупреждение календаря',
+            description: result.warning,
+            variant: 'destructive',
+          });
+        }
         setShowEventDialog(false);
         setSelectedEvent(null);
         fetchEvents();

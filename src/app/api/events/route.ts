@@ -9,6 +9,7 @@ import {
   pickCreateEventScalarData,
 } from '@/lib/event-policy';
 import { normalizeBudgetItems, validateBudgetItems } from '@/lib/budget-policy';
+import { CALENDAR_EVENT_STATUSES } from '@/lib/calendar-policy';
 
 function isValidDate(d: any): boolean {
   if (!d) return true; // null/undefined is acceptable (optional field)
@@ -82,7 +83,13 @@ export async function GET(request: NextRequest) {
         ],
       };
     } else if (department === 'agd') {
-      // AGD sees all for calendar
+      where.status = {
+        in: [
+          'agd_date_review',
+          'uin_assigned',
+          ...CALENDAR_EVENT_STATUSES,
+        ],
+      };
     } else if (department === 'organization') {
       where.status = { in: ['calendar_approved', 'organization_assignment', 'in_progress', 'event_finished', 'approved'] };
     } else if (department === 'methodology') {

@@ -1,15 +1,18 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  Calendar, Star, Eye, CheckCircle2, Play, Users as UsersIcon,
+  Calendar, Star, Eye, Filter, AlertTriangle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { EventData, EventStatus } from '@/lib/crm-types';
 import { getStatusLabel, getStatusColor, formatDate } from '@/lib/crm-utils';
+import { dateRangesOverlap, isCalendarEventStatus } from '@/lib/calendar-policy';
 
 interface AGDViewProps {
   events: EventData[];
@@ -30,16 +33,49 @@ export function AGDView({
   setShowEventDialog,
   mounted,
 }: AGDViewProps) {
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [venueFilter, setVenueFilter] = useState('all');
+  const [responsibleFilter, setResponsibleFilter] = useState('all');
+  const [dateFromFilter, setDateFromFilter] = useState('');
+  const [dateToFilter, setDateToFilter] = useState('');
+
   const year = selectedDate ? selectedDate.getFullYear() : new Date().getFullYear();
   const month = selectedDate ? selectedDate.getMonth() : new Date().getMonth();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDayOfWeek = (new Date(year, month, 1).getDay() + 6) % 7;
   const monthName = selectedDate ? selectedDate.toLocaleString('ru-RU', { month: 'long', year: 'numeric' }) : '';
   const days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+  const defaultYearStart = new Date(new Date().getFullYear(), 0, 1);
+  const defaultYearEnd = new Date(new Date().getFullYear(), 11, 31);
+  const filterStart = dateFromFilter ? new Date(dateFromFilter) : defaultYearStart;
+  const filterEnd = dateToFilter ? new Date(dateToFilter) : defaultYearEnd;
+
+  const calendarEvents = useMemo(() => events.filter(e => isCalendarEventStatus(e.status)), [events]);
+  const filteredCalendarEvents = useMemo(() => calendarEvents.filter(event => {
+    if (!event.startDate || !event.endDate) return false;
+    if (statusFilter !== 'all' && event.status !== statusFilter) return false;
+    if (venueFilter !== 'all' && (event.venue || 'Без площадки') !== venueFilter) return false;
+    if (responsibleFilter !== 'all') {
+      const leads = event.assignments
+        ?.filter(a => a.role === 'LEAD')
+        .map(a => a.user?.name || a.userId) || [];
+      if (!leads.includes(responsibleFilter)) return false;
+    }
+    return dateRangesOverlap(event.startDate, event.endDate, filterStart, filterEnd);
+  }), [calendarEvents, dateFromFilter, dateToFilter, filterEnd, filterStart, responsibleFilter, statusFilter, venueFilter]);
+
+  const venueOptions = useMemo(() => Array.from(new Set(calendarEvents.map(e => e.venue || 'Без площадки'))).sort(), [calendarEvents]);
+  const statusOptions = useMemo(() => Array.from(new Set(calendarEvents.map(e => e.status))).sort(), [calendarEvents]);
+  const responsibleOptions = useMemo(() => Array.from(new Set(
+    calendarEvents.flatMap(e => e.assignments
+      ?.filter(a => a.role === 'LEAD')
+      .map(a => a.user?.name || a.userId) || [])
+  )).sort(), [calendarEvents]);
+  const largeRangeWarning = filterEnd.getTime() - filterStart.getTime() > 366 * 24 * 60 * 60 * 1000;
 
   const getEventsForDate = (day: number) => {
     const date = new Date(year, month, day);
-    return events.filter(e => {
+    return filteredCalendarEvents.filter(e => {
       if (!e.startDate || !e.endDate) return false;
       const start = new Date(e.startDate);
       const end = new Date(e.endDate);
@@ -50,7 +86,7 @@ export function AGDView({
   const selectedDayEvents = selectedDate ? getEventsForDate(selectedDate.getDate()) : [];
 
   // VIP events
-  const vipEvents = events.filter(e => e.vipGuests);
+  const vipEvents = filteredCalendarEvents.filter(e => e.vipGuests);
 
   // Events waiting for calendar approval
   const waitingForCalendar = events.filter(e => ['agd_date_review', 'uin_assigned'].includes(e.status));
@@ -61,6 +97,64 @@ export function AGDView({
         <h2 className="text-2xl font-bold">Календарь мероприятий</h2>
         <p className="text-muted-foreground">Календарь активностей, VIP-гости, добавление в календарь</p>
       </div>
+
+      <Card className="shadow-sm">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2"><Filter className="h-4 w-4" /> Фильтры календаря</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          <div>
+            <p className="text-xs text-muted-foreground mb-1">Дата с</p>
+            <Input type="date" value={dateFromFilter} onChange={e => setDateFromFilter(e.target.value)} />
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground mb-1">Дата по</p>
+            <Input type="date" value={dateToFilter} onChange={e => setDateToFilter(e.target.value)} />
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground mb-1">Статус</p>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все календарные</SelectItem>
+                {statusOptions.map(status => <SelectItem key={status} value={status}>{getStatusLabel(status as EventStatus)}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground mb-1">Площадка</p>
+            <Select value={venueFilter} onValueChange={setVenueFilter}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все площадки</SelectItem>
+                {venueOptions.map(venue => <SelectItem key={venue} value={venue}>{venue}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground mb-1">Ответственный</p>
+            <Select value={responsibleFilter} onValueChange={setResponsibleFilter}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все ответственные</SelectItem>
+                {responsibleOptions.map(name => <SelectItem key={name} value={name}>{name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="sm:col-span-2 lg:col-span-5 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span>Показано {filteredCalendarEvents.length} из {calendarEvents.length} календарных мероприятий. По умолчанию график ограничен текущим годом.</span>
+            <Button variant="outline" size="sm" className="h-8" onClick={() => { setStatusFilter('all'); setVenueFilter('all'); setResponsibleFilter('all'); setDateFromFilter(''); setDateToFilter(''); }}>
+              Сбросить фильтры
+            </Button>
+          </div>
+          {largeRangeWarning && (
+            <div className="sm:col-span-2 lg:col-span-5 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>Выбран диапазон больше года. Для читаемого графика сузьте даты фильтром.</span>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Events waiting for calendar addition */}
       {waitingForCalendar.length > 0 && (
@@ -190,9 +284,9 @@ export function AGDView({
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-sm">Активности</CardTitle></CardHeader>
             <CardContent className="space-y-2">
-              <div className="flex justify-between text-xs sm:text-sm"><span className="text-muted-foreground">В процессе</span><span className="font-medium">{events.filter(e => e.status === 'in_progress').length}</span></div>
-              <div className="flex justify-between text-xs sm:text-sm"><span className="text-muted-foreground">Предстоящие</span><span className="font-medium">{mounted ? events.filter(e => e.startDate && new Date(e.startDate) > new Date()).length : '–'}</span></div>
-              <div className="flex justify-between text-xs sm:text-sm"><span className="text-muted-foreground">Завершенные</span><span className="font-medium">{events.filter(e => ['archived', 'completed'].includes(e.status)).length}</span></div>
+              <div className="flex justify-between text-xs sm:text-sm"><span className="text-muted-foreground">В процессе</span><span className="font-medium">{filteredCalendarEvents.filter(e => e.status === 'in_progress').length}</span></div>
+              <div className="flex justify-between text-xs sm:text-sm"><span className="text-muted-foreground">Предстоящие</span><span className="font-medium">{mounted ? filteredCalendarEvents.filter(e => e.startDate && new Date(e.startDate) > new Date()).length : '–'}</span></div>
+              <div className="flex justify-between text-xs sm:text-sm"><span className="text-muted-foreground">Завершенные</span><span className="font-medium">{filteredCalendarEvents.filter(e => ['archived', 'completed'].includes(e.status)).length}</span></div>
             </CardContent>
           </Card>
         </div>
@@ -208,7 +302,7 @@ export function AGDView({
         </CardHeader>
         <CardContent>
           {(() => {
-            const eventsWithDates = events.filter(e => e.startDate && e.endDate);
+            const eventsWithDates = filteredCalendarEvents.filter(e => e.startDate && e.endDate);
             if (eventsWithDates.length === 0) {
               return (
                 <div className="text-center py-12 text-muted-foreground">
@@ -225,18 +319,18 @@ export function AGDView({
             const totalMs = timelineEnd.getTime() - timelineStart.getTime();
 
             const statusGanttColors: Record<string, string> = {
-              draft: 'bg-gray-400',
-              pending_approval: 'bg-amber-400',
-              budget_approved: 'bg-sky-400',
-              approved: 'bg-[#E4002B]',
-              uin_assigned: 'bg-teal-400',
+              calendar_approved: 'bg-emerald-500',
+              organization_assignment: 'bg-cyan-500',
               in_progress: 'bg-blue-400',
+              event_finished: 'bg-orange-400',
+              methodology_actual_budget_review: 'bg-fuchsia-400',
+              coordination_actual_budget_review: 'bg-purple-400',
+              actual_budget_approved: 'bg-indigo-400',
+              archived: 'bg-green-400',
+              approved: 'bg-[#E4002B]',
               pending_actual_budget: 'bg-orange-400',
               pending_actual_approval: 'bg-purple-400',
-              actual_budget_approved: 'bg-indigo-400',
               completed: 'bg-green-400',
-              rejected: 'bg-red-400',
-              cancelled: 'bg-gray-300',
             };
 
             // Generate month labels

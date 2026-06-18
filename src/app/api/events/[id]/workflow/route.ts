@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getAuthUser } from '@/lib/auth-helpers';
 import { validateCsrf, csrfErrorResponse } from '@/lib/csrf';
+import { CALENDAR_EVENT_STATUSES, dateRangesOverlap } from '@/lib/calendar-policy';
 
 type WorkflowAction =
   | 'submit_for_approval'
@@ -161,6 +162,7 @@ export async function POST(
     let notificationType = 'info';
     const updateData: Record<string, unknown> = {};
     let createUinTask = false;
+    let calendarConflicts: Array<{ id: string; title: string; startDate: Date | null; endDate: Date | null; venue: string | null }> = [];
 
     switch (action) {
       case 'submit_for_approval': {
@@ -302,6 +304,28 @@ export async function POST(
           'Добавить в календарь можно только после присвоения УИН и проверки АГД'
         );
         if (invalid) return invalid;
+        if (event.startDate && event.endDate) {
+          const existingCalendarEvents = await db.event.findMany({
+            where: {
+              id: { not: id },
+              status: { in: [...CALENDAR_EVENT_STATUSES] },
+              startDate: { not: null },
+              endDate: { not: null },
+            },
+            select: {
+              id: true,
+              title: true,
+              startDate: true,
+              endDate: true,
+              venue: true,
+            },
+          });
+          calendarConflicts = existingCalendarEvents.filter(conflict =>
+            conflict.startDate
+            && conflict.endDate
+            && dateRangesOverlap(event.startDate!, event.endDate!, conflict.startDate, conflict.endDate)
+          );
+        }
         newStatus = 'calendar_approved';
         decision = 'agd_approved';
         updateData.calendarAdded = true;
@@ -543,7 +567,13 @@ export async function POST(
       return updated;
     });
 
-    return NextResponse.json(updatedEvent);
+    return NextResponse.json({
+      ...updatedEvent,
+      calendarConflicts,
+      warning: calendarConflicts.length > 0
+        ? `Найдены пересечения дат с ${calendarConflicts.length} календарными мероприятиями`
+        : undefined,
+    });
   } catch (error: any) {
     console.error('Error in workflow:', error);
     return NextResponse.json({ error: 'Внутренняя ошибка сервера' }, { status: 500 });
