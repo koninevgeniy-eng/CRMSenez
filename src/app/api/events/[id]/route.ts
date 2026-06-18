@@ -8,6 +8,7 @@ import {
   isEventStatus,
   pickEventScalarData,
 } from '@/lib/event-policy';
+import { hasPlannedBudgetChange, normalizeBudgetItems, validateBudgetItems } from '@/lib/budget-policy';
 
 function isValidDate(d: any): boolean {
   if (!d) return true;
@@ -108,7 +109,10 @@ export async function PUT(
     const { id } = await params;
 
     // Validate the event exists before updating
-    const existingEvent = await db.event.findUnique({ where: { id } });
+    const existingEvent = await db.event.findUnique({
+      where: { id },
+      include: { budgetItems: true },
+    });
     if (!existingEvent) {
       return NextResponse.json(
         { error: 'Мероприятие не найдено' },
@@ -188,23 +192,14 @@ export async function PUT(
       );
     }
 
-    // Validate budget items: non-negative amounts
-    if (Array.isArray(budgetItems)) {
-      for (const b of budgetItems) {
-        if (b.plannedAmount !== undefined && typeof b.plannedAmount === 'number' && b.plannedAmount < 0) {
-          return NextResponse.json(
-            { error: `Плановая сумма бюджетной статьи не может быть отрицательной (${b.description || b.category})` },
-            { status: 400 }
-          );
-        }
-        if (b.actualAmount !== undefined && b.actualAmount !== null && typeof b.actualAmount === 'number' && b.actualAmount < 0) {
-          return NextResponse.json(
-            { error: `Фактическая сумма бюджетной статьи не может быть отрицательной (${b.description || b.category})` },
-            { status: 400 }
-          );
-        }
-      }
+    const budgetValidation = validateBudgetItems(budgetItems);
+    if (!budgetValidation.ok) {
+      return NextResponse.json(
+        { error: budgetValidation.error },
+        { status: 400 }
+      );
     }
+    const normalizedBudgetItems = Array.isArray(budgetItems) ? normalizeBudgetItems(budgetItems) : undefined;
 
     // Validate payments: non-negative amounts
     if (Array.isArray(payments)) {
@@ -264,6 +259,29 @@ export async function PUT(
 
     // Log changes
     const changeLogs: any[] = [];
+    const plannedBudgetChanged = normalizedBudgetItems !== undefined
+      && hasPlannedBudgetChange(existingEvent.budgetItems, budgetItems);
+    const needsBudgetReapproval = plannedBudgetChanged
+      && existingEvent.budgetApproved
+      && ![
+        'draft',
+        'methodology_review',
+        'revision_requested',
+        'coordination_budget_review',
+        'cancel_requested',
+        'cancelled',
+        'archived',
+        'completed',
+      ].includes(existingEvent.status);
+
+    if (needsBudgetReapproval) {
+      updateData.status = 'coordination_budget_review';
+      updateData.budgetApproved = false;
+      updateData.budgetApprovedBy = null;
+      updateData.budgetApprovedAt = null;
+      updateData.calendarAdded = false;
+    }
+
     if (currentEvent) {
       for (const [key, value] of Object.entries(updateData)) {
         const oldValue = (currentEvent as any)[key];
@@ -290,6 +308,15 @@ export async function PUT(
             changedBy: authUser.name,
           });
         }
+      }
+      if (needsBudgetReapproval) {
+        changeLogs.push({
+          eventId: id,
+          field: 'budgetReapproval',
+          oldValue: existingEvent.status,
+          newValue: 'coordination_budget_review',
+          changedBy: authUser.name,
+        });
       }
     }
 
@@ -336,20 +363,26 @@ export async function PUT(
       }
 
       // Handle budget items - replace all
-      if (budgetItems !== undefined) {
+      if (normalizedBudgetItems !== undefined) {
         await tx.budgetItem.deleteMany({ where: { eventId: id } });
-        if (budgetItems.length > 0) {
+        if (normalizedBudgetItems.length > 0) {
           await tx.budgetItem.createMany({
-            data: budgetItems.map((b: any) => ({
+            data: normalizedBudgetItems.map((b: any) => ({
               eventId: id,
+              number: b.number,
+              article: b.article,
+              quantity: b.quantity,
+              unitPrice: b.unitPrice,
+              comment: b.comment,
+              overrunReason: b.overrunReason,
               category: b.category,
               description: b.description,
-              plannedAmount: b.plannedAmount || 0,
-              actualAmount: b.actualAmount || null,
-              originalAmount: b.originalAmount || null,
-              correctedAmount: b.correctedAmount || null,
-              correctedBy: b.correctedBy || null,
-              correctionComment: b.correctionComment || null,
+              plannedAmount: b.plannedAmount,
+              actualAmount: b.actualAmount,
+              originalAmount: b.originalAmount,
+              correctedAmount: b.correctedAmount,
+              correctedBy: b.correctedBy,
+              correctionComment: b.correctionComment,
               status: b.status || 'planned',
             })),
           });

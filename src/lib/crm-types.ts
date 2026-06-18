@@ -176,6 +176,12 @@ export interface Speaker {
 
 export interface BudgetItem {
   id?: string;
+  number?: number;
+  article?: string;
+  quantity?: number;
+  unitPrice?: number;
+  comment?: string;
+  overrunReason?: string;
   category: string;
   description: string;
   plannedAmount: number;

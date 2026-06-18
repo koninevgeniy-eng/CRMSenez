@@ -8,6 +8,7 @@ import {
   isEventStatus,
   pickCreateEventScalarData,
 } from '@/lib/event-policy';
+import { normalizeBudgetItems, validateBudgetItems } from '@/lib/budget-policy';
 
 function isValidDate(d: any): boolean {
   if (!d) return true; // null/undefined is acceptable (optional field)
@@ -236,23 +237,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate budget items: non-negative amounts
-    if (Array.isArray(budgetItems)) {
-      for (const b of budgetItems) {
-        if (b.plannedAmount !== undefined && typeof b.plannedAmount === 'number' && b.plannedAmount < 0) {
-          return NextResponse.json(
-            { error: `Плановая сумма бюджетной статьи не может быть отрицательной (${b.description || b.category})` },
-            { status: 400 }
-          );
-        }
-        if (b.actualAmount !== undefined && b.actualAmount !== null && typeof b.actualAmount === 'number' && b.actualAmount < 0) {
-          return NextResponse.json(
-            { error: `Фактическая сумма бюджетной статьи не может быть отрицательной (${b.description || b.category})` },
-            { status: 400 }
-          );
-        }
-      }
+    const budgetValidation = validateBudgetItems(budgetItems);
+    if (!budgetValidation.ok) {
+      return NextResponse.json(
+        { error: budgetValidation.error },
+        { status: 400 }
+      );
     }
+    const normalizedBudgetItems = normalizeBudgetItems(budgetItems);
 
     // Validate payments: non-negative amounts
     if (Array.isArray(payments)) {
@@ -290,11 +282,17 @@ export async function POST(request: NextRequest) {
           })),
         },
         budgetItems: {
-          create: budgetItems.map((b: any) => ({
+          create: normalizedBudgetItems.map((b: any) => ({
+            number: b.number,
+            article: b.article,
+            quantity: b.quantity,
+            unitPrice: b.unitPrice,
+            comment: b.comment,
+            overrunReason: b.overrunReason,
             category: b.category,
             description: b.description,
-            plannedAmount: b.plannedAmount || 0,
-            actualAmount: b.actualAmount || null,
+            plannedAmount: b.plannedAmount,
+            actualAmount: b.actualAmount,
             status: b.status || 'planned',
           })),
         },

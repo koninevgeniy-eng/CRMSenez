@@ -36,29 +36,106 @@ function BudgetTab({ budgetItems, totalBudget, eventId, onUpdate, editing, depar
   const isCoordination = departmentContext === 'coordination';
   const canCorrectBudget = isCoordination;
 
-  const addItem = () => setItems([...items, { category: '', description: '', plannedAmount: 0, actualAmount: 0, status: 'planned' }]);
+  const getItemArticle = (item: BudgetItem) => item.article || item.category || '';
+  const getItemComment = (item: BudgetItem) => item.comment || item.description || '';
+  const getItemQuantity = (item: BudgetItem) => item.quantity ?? (item.plannedAmount ? 1 : 0);
+  const getItemUnitPrice = (item: BudgetItem) => item.unitPrice ?? (getItemQuantity(item) > 0 ? item.plannedAmount / getItemQuantity(item) : item.plannedAmount);
+  const getItemPlannedAmount = (item: BudgetItem) => item.plannedAmount ?? getItemQuantity(item) * getItemUnitPrice(item);
+
+  const normalizeItemForSave = (item: BudgetItem, index: number): BudgetItem => {
+    const quantity = getItemQuantity(item);
+    const unitPrice = getItemUnitPrice(item);
+    const plannedAmount = item.plannedAmount ?? quantity * unitPrice;
+    const article = getItemArticle(item);
+    const comment = getItemComment(item);
+
+    return {
+      ...item,
+      number: item.number ?? index + 1,
+      article,
+      category: item.category || article,
+      quantity,
+      unitPrice,
+      comment,
+      description: item.description || comment,
+      plannedAmount,
+      overrunReason: item.overrunReason || undefined,
+    };
+  };
+
+  const addItem = () => setItems([
+    ...items,
+    {
+      number: items.length + 1,
+      article: '',
+      category: '',
+      quantity: 1,
+      unitPrice: 0,
+      plannedAmount: 0,
+      comment: '',
+      description: '',
+      actualAmount: 0,
+      status: 'planned',
+    },
+  ]);
 
   const updateItem = (index: number, field: string, value: any) => {
-    if ((field === 'plannedAmount' || field === 'actualAmount' || field === 'correctedAmount') && typeof value === 'number' && value < 0) {
-      toast({ title: 'Сумма не может быть отрицательной', variant: 'destructive' });
+    if (['number', 'quantity', 'unitPrice', 'plannedAmount', 'actualAmount', 'correctedAmount'].includes(field) && typeof value === 'number' && value < 0) {
+      toast({ title: 'Числовые значения бюджета не могут быть отрицательными', variant: 'destructive' });
       return;
     }
     const updated = [...items];
-    updated[index] = { ...updated[index], [field]: value };
+    const nextItem = { ...updated[index], [field]: value };
+    if (field === 'article') {
+      nextItem.category = value;
+    }
+    if (field === 'comment') {
+      nextItem.description = value;
+    }
+    if (field === 'quantity' || field === 'unitPrice') {
+      const quantity = field === 'quantity' ? value : getItemQuantity(nextItem);
+      const unitPrice = field === 'unitPrice' ? value : getItemUnitPrice(nextItem);
+      nextItem.plannedAmount = quantity * unitPrice;
+    }
+    updated[index] = nextItem;
     setItems(updated);
   };
 
   const removeItem = (index: number) => setItems(items.filter((_, i) => i !== index));
 
   const saveItems = async () => {
-    const validItems = items.filter(b => b.category && b.description);
+    const validItems = items.map(normalizeItemForSave);
     for (const item of validItems) {
+      if (!item.number || item.number <= 0 || !Number.isInteger(item.number)) {
+        toast({ title: 'У каждой строки бюджета должен быть положительный номер', variant: 'destructive' });
+        return;
+      }
+      if (!item.article) {
+        toast({ title: `Укажите статью в строке №${item.number}`, variant: 'destructive' });
+        return;
+      }
+      if (item.quantity === undefined || item.quantity < 0) {
+        toast({ title: `Количество не может быть отрицательным: ${item.article}`, variant: 'destructive' });
+        return;
+      }
+      if (item.unitPrice === undefined || item.unitPrice < 0) {
+        toast({ title: `Цена не может быть отрицательной: ${item.article}`, variant: 'destructive' });
+        return;
+      }
       if (item.plannedAmount < 0) {
-        toast({ title: `Плановая сумма не может быть отрицательной: ${item.description}`, variant: 'destructive' });
+        toast({ title: `Сумма не может быть отрицательной: ${item.article}`, variant: 'destructive' });
+        return;
+      }
+      if (!item.comment?.trim()) {
+        toast({ title: `Комментарий обязателен: ${item.article}`, variant: 'destructive' });
         return;
       }
       if (item.actualAmount !== null && item.actualAmount !== undefined && item.actualAmount < 0) {
-        toast({ title: `Фактическая сумма не может быть отрицательной: ${item.description}`, variant: 'destructive' });
+        toast({ title: `Фактическая сумма не может быть отрицательной: ${item.article}`, variant: 'destructive' });
+        return;
+      }
+      if (item.actualAmount !== null && item.actualAmount !== undefined && item.actualAmount > item.plannedAmount && !item.overrunReason?.trim()) {
+        toast({ title: `Укажите причину перерасхода: ${item.article}`, variant: 'destructive' });
         return;
       }
     }
@@ -137,7 +214,7 @@ function BudgetTab({ budgetItems, totalBudget, eventId, onUpdate, editing, depar
     toast({ title: 'Позиция возвращена к исходной сумме' });
   };
 
-  const totalPlanned = items.reduce((s, b) => s + b.plannedAmount, 0);
+  const totalPlanned = items.reduce((s, b) => s + getItemPlannedAmount(b), 0);
   const totalActual = items.reduce((s, b) => s + (b.actualAmount || 0), 0);
   const budgetVariance = totalPlanned - totalActual;
   const hasOverBudget = totalActual > totalPlanned && totalPlanned > 0;
@@ -253,12 +330,16 @@ function BudgetTab({ budgetItems, totalBudget, eventId, onUpdate, editing, depar
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Категория</TableHead>
-              <TableHead>Описание</TableHead>
-              <TableHead className="text-right">План</TableHead>
+              <TableHead className="w-16">№</TableHead>
+              <TableHead>Статья</TableHead>
+              <TableHead className="text-right">Кол-во</TableHead>
+              <TableHead className="text-right">Цена</TableHead>
+              <TableHead className="text-right">Сумма</TableHead>
+              <TableHead>Комментарий</TableHead>
               {budgetCorrectionMode && <TableHead className="text-right bg-sky-50">Скорректировано</TableHead>}
               {!budgetCorrectionMode && <TableHead className="text-right">Корректировка</TableHead>}
               <TableHead className="text-right">Факт</TableHead>
+              <TableHead>Причина перерасхода</TableHead>
               <TableHead>Статус оплаты</TableHead>
               {canCorrectBudget && !budgetCorrectionMode && <TableHead></TableHead>}
               {editing && <TableHead></TableHead>}
@@ -267,9 +348,10 @@ function BudgetTab({ budgetItems, totalBudget, eventId, onUpdate, editing, depar
           <TableBody>
             {items.map((b, i) => {
               const payStatus = paymentStatusMap[b.status || 'planned'] || paymentStatusMap.planned;
-              const isOverBudget = b.actualAmount !== null && b.actualAmount !== undefined && b.actualAmount > b.plannedAmount && b.plannedAmount > 0;
+              const plannedAmount = getItemPlannedAmount(b);
+              const isOverBudget = b.actualAmount !== null && b.actualAmount !== undefined && b.actualAmount > plannedAmount && plannedAmount >= 0;
               const hasCorrection = b.originalAmount !== undefined && b.originalAmount !== null;
-              const correctionDiff = hasCorrection ? b.plannedAmount - (b.originalAmount || 0) : 0;
+              const correctionDiff = hasCorrection ? plannedAmount - (b.originalAmount || 0) : 0;
               const isPositiveCorrection = correctionDiff > 0;
               const isNegativeCorrection = correctionDiff < 0;
 
@@ -277,23 +359,41 @@ function BudgetTab({ budgetItems, totalBudget, eventId, onUpdate, editing, depar
                 <TableRow key={i} className={`${isOverBudget ? 'bg-red-50' : ''} ${budgetCorrectionMode ? '' : ''}`}>
                   <TableCell className="text-xs sm:text-sm">
                     {editing ? (
-                      <Select value={b.category} onValueChange={v => updateItem(i, 'category', v)}>
+                      <Input type="number" min={1} step={1} value={b.number ?? i + 1} onChange={e => updateItem(i, 'number', parseInt(e.target.value) || i + 1)} className="w-16" />
+                    ) : (
+                      <span>{b.number ?? i + 1}</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-xs sm:text-sm">
+                    {editing ? (
+                      <Select value={getItemArticle(b)} onValueChange={v => updateItem(i, 'article', v)}>
                         <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
                         <SelectContent>{BUDGET_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                       </Select>
                     ) : (
-                      <span className="truncate">{b.category}</span>
+                      <span className="truncate">{getItemArticle(b)}</span>
                     )}
-                  </TableCell>
-                  <TableCell className="text-xs sm:text-sm">
-                    {editing ? <Input value={b.description} onChange={e => updateItem(i, 'description', e.target.value)} /> : b.description}
                   </TableCell>
                   <TableCell className="text-right">
                     {editing ? (
-                      <Input type="number" min={0} value={b.plannedAmount} onChange={e => updateItem(i, 'plannedAmount', parseFloat(e.target.value) || 0)} className="w-28" />
+                      <Input type="number" min={0} value={getItemQuantity(b)} onChange={e => updateItem(i, 'quantity', parseFloat(e.target.value) || 0)} className="w-24" />
+                    ) : (
+                      <span>{getItemQuantity(b)}</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {editing ? (
+                      <Input type="number" min={0} value={getItemUnitPrice(b)} onChange={e => updateItem(i, 'unitPrice', parseFloat(e.target.value) || 0)} className="w-28" />
+                    ) : (
+                      <span>{formatCurrency(getItemUnitPrice(b))}</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {editing ? (
+                      <Input type="number" min={0} value={plannedAmount} onChange={e => updateItem(i, 'plannedAmount', parseFloat(e.target.value) || 0)} className="w-28" />
                     ) : (
                       <span>
-                        {formatCurrency(b.plannedAmount)}
+                        {formatCurrency(plannedAmount)}
                         {hasCorrection && (
                           <span className={`text-[10px] block ${isNegativeCorrection ? 'text-red-500' : 'text-green-600'}`}>
                             было: {formatCurrency(b.originalAmount!)} ({isPositiveCorrection ? '+' : ''}{formatCurrency(correctionDiff)})
@@ -301,6 +401,9 @@ function BudgetTab({ budgetItems, totalBudget, eventId, onUpdate, editing, depar
                         )}
                       </span>
                     )}
+                  </TableCell>
+                  <TableCell className="text-xs sm:text-sm min-w-[180px]">
+                    {editing ? <Input value={getItemComment(b)} onChange={e => updateItem(i, 'comment', e.target.value)} placeholder="Обоснование строки" /> : getItemComment(b)}
                   </TableCell>
 
                   {/* Correction column: either input (correction mode) or display */}
@@ -323,7 +426,7 @@ function BudgetTab({ budgetItems, totalBudget, eventId, onUpdate, editing, depar
                           });
                         }}
                         className="w-28"
-                        placeholder={String(b.plannedAmount)}
+                        placeholder={String(plannedAmount)}
                       />
                     </TableCell>
                   ) : (
@@ -357,6 +460,19 @@ function BudgetTab({ budgetItems, totalBudget, eventId, onUpdate, editing, depar
                       <Input type="number" min={0} value={b.actualAmount || ''} onChange={e => updateItem(i, 'actualAmount', parseFloat(e.target.value) || 0)} className="w-28" />
                     ) : (
                       <span className={isOverBudget ? 'text-red-600 font-semibold' : ''}>{formatCurrency(b.actualAmount)}</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-xs sm:text-sm min-w-[180px]">
+                    {editing ? (
+                      <Input
+                        value={b.overrunReason || ''}
+                        onChange={e => updateItem(i, 'overrunReason', e.target.value)}
+                        placeholder={isOverBudget ? 'Причина обязательна' : '—'}
+                      />
+                    ) : (
+                      isOverBudget
+                        ? <span className={b.overrunReason ? '' : 'text-red-600 font-medium'}>{b.overrunReason || 'Не указана'}</span>
+                        : <span className="text-muted-foreground">—</span>
                     )}
                   </TableCell>
                   <TableCell>
@@ -398,18 +514,19 @@ function BudgetTab({ budgetItems, totalBudget, eventId, onUpdate, editing, depar
               );
             })}
             <TableRow className="font-bold border-t-2 border-gray-300">
-              <TableCell colSpan={2}>ИТОГО</TableCell>
+              <TableCell colSpan={4}>ИТОГО</TableCell>
               <TableCell className="text-right">{formatCurrency(totalPlanned)}</TableCell>
+              <TableCell />
               {budgetCorrectionMode ? (
                 <TableCell className="text-right bg-sky-50/50">
-                  {formatCurrency(items.reduce((s, b, i) => s + (correctionItems[i] ?? b.plannedAmount), 0))}
+                  {formatCurrency(items.reduce((s, b, i) => s + (correctionItems[i] ?? getItemPlannedAmount(b)), 0))}
                 </TableCell>
               ) : (
                 <TableCell className="text-right">
                   {(() => {
                     const totalCorrection = items.reduce((s, b) => {
                       if (b.originalAmount !== undefined && b.originalAmount !== null) {
-                        return s + (b.plannedAmount - b.originalAmount);
+                        return s + (getItemPlannedAmount(b) - b.originalAmount);
                       }
                       return s;
                     }, 0);
@@ -423,6 +540,7 @@ function BudgetTab({ budgetItems, totalBudget, eventId, onUpdate, editing, depar
                 </TableCell>
               )}
               <TableCell className={`text-right ${hasOverBudget ? 'text-red-600' : ''}`}>{formatCurrency(totalActual)}</TableCell>
+              <TableCell />
               <TableCell>{hasOverBudget && <Badge variant="destructive" className="text-[10px]">Перерасход</Badge>}</TableCell>
               {canCorrectBudget && !budgetCorrectionMode && <TableCell />}
               {editing && <TableCell />}

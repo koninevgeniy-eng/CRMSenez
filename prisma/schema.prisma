@@ -139,6 +139,12 @@ model Speaker {
 model BudgetItem {
   id                 String   @id @default(cuid())
   eventId            String
+  number             Int?
+  article            String?
+  quantity           Float?
+  unitPrice          Float?
+  comment            String?
+  overrunReason      String?
   category           String
   description        String
   plannedAmount      Float
