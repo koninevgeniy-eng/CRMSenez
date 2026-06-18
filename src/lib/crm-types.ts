@@ -279,6 +279,11 @@ export interface ChangeLog {
   oldValue?: string;
   newValue?: string;
   changedBy?: string;
+  role?: string;
+  department?: string;
+  stage?: string;
+  version?: number;
+  comment?: string;
   createdAt: string;
 }
 

@@ -63,6 +63,62 @@ import { CommentsTab } from '@/components/crm/CommentsTab';
 import { PaymentsTab } from '@/components/crm/PaymentsTab';
 import { AnalyticalReportTab } from '@/components/crm/AnalyticalReportTab';
 
+const ROLE_LABELS: Record<string, string> = {
+  admin: 'Администратор',
+  manager: 'Руководитель',
+  employee: 'Сотрудник',
+  system: 'Система',
+};
+
+const DEPARTMENT_LABELS: Record<string, string> = {
+  dashboard: 'Обзор',
+  methodology: 'Методология',
+  coordination: 'Координация',
+  agd: 'АГД',
+  organization: 'Организация',
+  analytics: 'Аналитика',
+  system: 'Система',
+};
+
+const APPROVAL_DECISION_LABELS: Record<string, string> = {
+  submitted: 'Направлено на согласование',
+  approved: 'Согласовано',
+  revision_requested: 'Возвращено на доработку',
+  budget_approved: 'Бюджет согласован',
+  uin_assigned: 'УИН присвоен',
+  agd_approved: 'Согласовано АГД',
+  accepted_by_organization: 'Принято организацией',
+  event_finished: 'Мероприятие проведено',
+  actual_budget_submitted: 'Фактический бюджет направлен',
+  actual_budget_methodology_approved: 'Фактический бюджет согласован методологией',
+  actual_budget_approved: 'Фактический бюджет согласован',
+  actual_budget_revision_requested: 'Фактический бюджет на доработке',
+  archived: 'Закрыто и направлено в архив',
+  cancel_requested: 'Запрошена отмена',
+  cancelled: 'Отменено',
+};
+
+const getRoleLabel = (role?: string) => role ? (ROLE_LABELS[role] || role) : '';
+const getDepartmentLabel = (department?: string) => department ? (DEPARTMENT_LABELS[department] || department) : '';
+const getDecisionLabel = (decision: string) => APPROVAL_DECISION_LABELS[decision] || decision;
+const getStageLabel = (stage?: string) => stage ? getStatusLabel(stage as EventStatus) : '';
+const formatHistoryDate = (date: string) => new Date(date).toLocaleString('ru-RU', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+const getDecisionColor = (decision: string) => {
+  if (decision.includes('revision') || decision.includes('cancel')) {
+    return 'bg-red-50 text-red-700 border-red-300';
+  }
+  if (decision.includes('approved') || ['archived', 'uin_assigned', 'agd_approved', 'accepted_by_organization', 'event_finished'].includes(decision)) {
+    return 'bg-emerald-50 text-emerald-700 border-emerald-300';
+  }
+  return 'bg-amber-50 text-amber-700 border-amber-300';
+};
+
 function EventDetailDialog({ event, open, onClose, onUpdate, onDelete, onWorkflowAction, onExport, onDuplicate, canEdit = false, canDelete = false, canManageWorkflow = false, canDuplicate = false, departmentContext = 'other' }: {
   event: EventData;
   open: boolean;
@@ -141,6 +197,10 @@ function EventDetailDialog({ event, open, onClose, onUpdate, onDelete, onWorkflo
     }
     return comment.trim();
   };
+
+  const approvals = event.approvals || [];
+  const changeLogs = event.changeLogs || [];
+  const hasHistory = approvals.length > 0 || changeLogs.length > 0;
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -343,58 +403,113 @@ function EventDetailDialog({ event, open, onClose, onUpdate, onDelete, onWorkflo
             </TabsContent>
 
             <TabsContent value="history" className="mt-0">
-              <div className="space-y-3">
-                {(event.changeLogs || []).length === 0 ? (
+              <div className="space-y-5">
+                {!hasHistory ? (
                   <div className="text-center py-12 text-muted-foreground">
                     <Clock className="h-12 w-12 mx-auto mb-3 opacity-30" />
                     <p className="text-lg font-medium">Нет записей в истории</p>
-                    <p className="text-sm mt-1">Изменения статуса и полей будут отображаться здесь</p>
+                    <p className="text-sm mt-1">Решения согласования и изменения полей будут отображаться здесь</p>
                   </div>
                 ) : (
-                  (event.changeLogs || []).map((log, i) => {
-                    const isStatusChange = log.field === 'status';
-                    const getChangeIcon = () => {
-                      if (isStatusChange) {
-                        const newStatus = log.newValue as EventStatus;
-                        if (['completed', 'archived', 'budget_approved', 'approved', 'calendar_approved', 'actual_budget_approved'].includes(newStatus)) return <CheckCircle2 className="h-4 w-4 text-[#E4002B]" />;
-                        if (['rejected', 'cancelled'].includes(newStatus)) return <XCircle className="h-4 w-4 text-red-500" />;
-                        if (newStatus === 'in_progress') return <Play className="h-4 w-4 text-blue-500" />;
-                        if (['pending_approval', 'methodology_review', 'coordination_budget_review', 'agd_date_review', 'methodology_actual_budget_review', 'coordination_actual_budget_review'].includes(newStatus)) return <Send className="h-4 w-4 text-amber-500" />;
-                        return <Clock className="h-4 w-4 text-gray-500" />;
-                      }
-                      return <Edit className="h-4 w-4 text-blue-400" />;
-                    };
-                    return (
-                      <div key={i} className="flex items-start gap-3 p-3 rounded-xl border bg-white hover:shadow-sm transition-shadow">
-                        <div className={`p-1.5 rounded-lg shrink-0 ${isStatusChange ? 'bg-[#FFF1F3]' : 'bg-blue-50'}`}>
-                          {getChangeIcon()}
+                  <>
+                    {approvals.length > 0 && (
+                      <section className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 className="h-4 w-4 text-[#E4002B]" />
+                          <h3 className="font-medium text-sm">Решения согласования</h3>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-medium text-sm">{log.changedBy || 'Система'}</span>
-                            {isStatusChange ? (
-                              <span className="text-sm text-muted-foreground">изменил(а) статус</span>
-                            ) : (
-                              <span className="text-sm text-muted-foreground">изменил(а) поле <span className="font-medium">{log.field}</span></span>
-                            )}
+                        {approvals.map((approval) => (
+                          <div key={approval.id} className="flex items-start gap-3 p-3 rounded-xl border bg-[#FFF8FA] hover:shadow-sm transition-shadow">
+                            <div className="p-1.5 rounded-lg shrink-0 bg-white">
+                              {approval.decision.includes('revision') || approval.decision.includes('cancel')
+                                ? <XCircle className="h-4 w-4 text-red-500" />
+                                : <CheckCircle2 className="h-4 w-4 text-[#E4002B]" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-medium text-sm">{approval.decidedBy || 'Система'}</span>
+                                <Badge variant="outline" className={`crm-badge text-[10px] ${getDecisionColor(approval.decision)}`}>
+                                  {getDecisionLabel(approval.decision)}
+                                </Badge>
+                                <Badge variant="outline" className="crm-badge text-[10px] bg-white">
+                                  v{approval.version}
+                                </Badge>
+                              </div>
+                              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                                {approval.stage && <Badge variant="outline" className={`crm-badge text-[10px] ${getStatusColor(approval.stage as EventStatus)}`}>{getStageLabel(approval.stage)}</Badge>}
+                                {approval.role && <Badge variant="outline" className="crm-badge text-[10px] bg-white">{getRoleLabel(approval.role)}</Badge>}
+                                {approval.department && <Badge variant="outline" className="crm-badge text-[10px] bg-white">{getDepartmentLabel(approval.department)}</Badge>}
+                              </div>
+                              {approval.comment && (
+                                <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">{approval.comment}</p>
+                              )}
+                              <p className="text-xs text-muted-foreground mt-1.5">{formatHistoryDate(approval.createdAt)}</p>
+                            </div>
                           </div>
-                          {isStatusChange ? (
-                            <div className="flex items-center gap-2 mt-1">
-                              {log.oldValue && <Badge variant="outline" className={`crm-badge text-[10px] ${getStatusColor(log.oldValue as EventStatus)}`}>{getStatusLabel(log.oldValue as EventStatus)}</Badge>}
-                              <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                              {log.newValue && <Badge className={`crm-badge text-[10px] ${getStatusColor(log.newValue as EventStatus)}`}>{getStatusLabel(log.newValue as EventStatus)}</Badge>}
-                            </div>
-                          ) : (
-                            <div className="mt-1 text-sm">
-                              {log.oldValue && <span className="text-muted-foreground line-through mr-2">{log.oldValue}</span>}
-                              {log.newValue && <span className="font-medium">{log.newValue}</span>}
-                            </div>
-                          )}
-                          <p className="text-xs text-muted-foreground mt-1.5">{new Date(log.createdAt).toLocaleString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                        ))}
+                      </section>
+                    )}
+
+                    {changeLogs.length > 0 && (
+                      <section className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Edit className="h-4 w-4 text-blue-500" />
+                          <h3 className="font-medium text-sm">Изменения данных</h3>
                         </div>
-                      </div>
-                    );
-                  })
+                        {changeLogs.map((log, i) => {
+                          const isStatusChange = log.field === 'status';
+                          const getChangeIcon = () => {
+                            if (isStatusChange) {
+                              const newStatus = log.newValue as EventStatus;
+                              if (['completed', 'archived', 'budget_approved', 'approved', 'calendar_approved', 'actual_budget_approved'].includes(newStatus)) return <CheckCircle2 className="h-4 w-4 text-[#E4002B]" />;
+                              if (['rejected', 'cancelled'].includes(newStatus)) return <XCircle className="h-4 w-4 text-red-500" />;
+                              if (newStatus === 'in_progress') return <Play className="h-4 w-4 text-blue-500" />;
+                              if (['pending_approval', 'methodology_review', 'coordination_budget_review', 'agd_date_review', 'methodology_actual_budget_review', 'coordination_actual_budget_review'].includes(newStatus)) return <Send className="h-4 w-4 text-amber-500" />;
+                              return <Clock className="h-4 w-4 text-gray-500" />;
+                            }
+                            return <Edit className="h-4 w-4 text-blue-400" />;
+                          };
+                          return (
+                            <div key={log.id || i} className="flex items-start gap-3 p-3 rounded-xl border bg-white hover:shadow-sm transition-shadow">
+                              <div className={`p-1.5 rounded-lg shrink-0 ${isStatusChange ? 'bg-[#FFF1F3]' : 'bg-blue-50'}`}>
+                                {getChangeIcon()}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-medium text-sm">{log.changedBy || 'Система'}</span>
+                                  {isStatusChange ? (
+                                    <span className="text-sm text-muted-foreground">изменил(а) статус</span>
+                                  ) : (
+                                    <span className="text-sm text-muted-foreground">изменил(а) поле <span className="font-medium">{log.field}</span></span>
+                                  )}
+                                </div>
+                                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                                  {log.stage && <Badge variant="outline" className={`crm-badge text-[10px] ${getStatusColor(log.stage as EventStatus)}`}>{getStageLabel(log.stage)}</Badge>}
+                                  {log.version && <Badge variant="outline" className="crm-badge text-[10px] bg-white">v{log.version}</Badge>}
+                                  {log.role && <Badge variant="outline" className="crm-badge text-[10px] bg-white">{getRoleLabel(log.role)}</Badge>}
+                                  {log.department && <Badge variant="outline" className="crm-badge text-[10px] bg-white">{getDepartmentLabel(log.department)}</Badge>}
+                                </div>
+                                {isStatusChange ? (
+                                  <div className="flex items-center gap-2 mt-2">
+                                    {log.oldValue && <Badge variant="outline" className={`crm-badge text-[10px] ${getStatusColor(log.oldValue as EventStatus)}`}>{getStatusLabel(log.oldValue as EventStatus)}</Badge>}
+                                    <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                                    {log.newValue && <Badge className={`crm-badge text-[10px] ${getStatusColor(log.newValue as EventStatus)}`}>{getStatusLabel(log.newValue as EventStatus)}</Badge>}
+                                  </div>
+                                ) : (
+                                  <div className="mt-2 text-sm">
+                                    {log.oldValue && <span className="text-muted-foreground line-through mr-2">{log.oldValue}</span>}
+                                    {log.newValue && <span className="font-medium">{log.newValue}</span>}
+                                  </div>
+                                )}
+                                {log.comment && <p className="mt-2 text-xs text-muted-foreground whitespace-pre-wrap">{log.comment}</p>}
+                                <p className="text-xs text-muted-foreground mt-1.5">{formatHistoryDate(log.createdAt)}</p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </section>
+                    )}
+                  </>
                 )}
               </div>
             </TabsContent>

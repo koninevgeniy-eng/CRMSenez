@@ -175,7 +175,16 @@ export async function POST(request: NextRequest) {
                 ],
               },
               changeLogs: {
-                create: { field: 'status', newValue: status, changedBy: 'Импорт' },
+                create: {
+                  field: 'status',
+                  newValue: status,
+                  changedBy: 'Импорт',
+                  role: 'system',
+                  department: 'system',
+                  stage: status,
+                  version: 1,
+                  comment: 'Импорт из Excel',
+                },
               },
             };
 

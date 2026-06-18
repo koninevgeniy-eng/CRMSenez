@@ -541,7 +541,7 @@ export async function POST(
           stage,
           decision,
           comment: comment || null,
-          decidedBy: authUser.id,
+          decidedBy: authUser.name,
           role: authUser.role,
           department: authUser.department,
         },
@@ -555,6 +555,11 @@ export async function POST(
             oldValue: oldStatus,
             newValue: newStatus,
             changedBy: authUser.name,
+            role: authUser.role,
+            department: authUser.department,
+            stage,
+            version: event.currentVersion,
+            comment: comment || null,
           },
         });
       }

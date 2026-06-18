@@ -268,14 +268,22 @@ model Notification {
 }
 
 model ChangeLog {
-  id        String   @id @default(cuid())
-  eventId   String
-  field     String
-  oldValue  String?
-  newValue  String?
-  changedBy String?
-  createdAt DateTime @default(now())
-  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  eventId    String
+  field      String
+  oldValue   String?
+  newValue   String?
+  changedBy  String?
+  role       String?
+  department String?
+  stage      String?
+  version    Int?
+  comment    String?
+  createdAt  DateTime @default(now())
+  event      Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId, createdAt])
+  @@index([stage])
 }
 
 model Payment {

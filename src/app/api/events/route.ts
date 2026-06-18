@@ -383,7 +383,16 @@ export async function POST(request: NextRequest) {
           ],
         },
         changeLogs: {
-          create: { field: 'status', newValue: 'draft', changedBy: authUser.name },
+          create: {
+            field: 'status',
+            newValue: 'draft',
+            changedBy: authUser.name,
+            role: authUser.role,
+            department: authUser.department,
+            stage: 'draft',
+            version: 1,
+            comment: 'Создание карточки мероприятия',
+          },
         },
       } as Prisma.EventCreateInput,
       include: {

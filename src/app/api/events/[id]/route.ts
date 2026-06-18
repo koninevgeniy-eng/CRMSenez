@@ -282,6 +282,15 @@ export async function PUT(
       updateData.calendarAdded = false;
     }
 
+    const changeLogContext = {
+      changedBy: authUser.name,
+      role: authUser.role,
+      department: authUser.department,
+      stage: existingEvent.status,
+      version: existingEvent.currentVersion,
+      comment: changeDescription || null,
+    };
+
     if (currentEvent) {
       for (const [key, value] of Object.entries(updateData)) {
         const oldValue = (currentEvent as any)[key];
@@ -293,7 +302,7 @@ export async function PUT(
             field: key,
             oldValue: oldStr,
             newValue: newStr,
-            changedBy: authUser.name,
+            ...changeLogContext,
           });
         }
       }
@@ -305,7 +314,7 @@ export async function PUT(
             field: boolField,
             oldValue: String((currentEvent as any)[boolField]),
             newValue: String(updateData[boolField]),
-            changedBy: authUser.name,
+            ...changeLogContext,
           });
         }
       }
@@ -315,7 +324,8 @@ export async function PUT(
           field: 'budgetReapproval',
           oldValue: existingEvent.status,
           newValue: 'coordination_budget_review',
-          changedBy: authUser.name,
+          ...changeLogContext,
+          comment: changeDescription || 'Плановый бюджет изменен после согласования. Требуется повторное согласование бюджета.',
         });
       }
     }
