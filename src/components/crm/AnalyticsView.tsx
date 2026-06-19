@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { EventData, EventStatus, STATUS_LABELS } from '@/lib/crm-types';
 import { getStatusLabel, getStatusColor, formatDate, formatCurrency, formatNumber } from '@/lib/crm-utils';
 import { exportWorkbook } from '@/lib/excel-client';
@@ -18,6 +19,7 @@ import {
 } from 'recharts';
 
 const CHART_COLORS = ['#10b981', '#f59e0b', '#3b82f6', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
+const getStageLabel = (stage: string) => STATUS_LABELS[stage as EventStatus] || stage;
 
 interface AnalyticsViewProps {
   events: EventData[];
@@ -75,6 +77,35 @@ export function AnalyticsView({
     ? ((analyticsData.totalBudget - (analyticsData.totalActualCost || 0)) / analyticsData.totalBudget * 100).toFixed(1)
     : '—';
   const participantAnalytics = analyticsData.participantAnalytics || {};
+  const processAnalytics = analyticsData.processAnalytics || {};
+  const workloadAnalytics = analyticsData.workloadAnalytics || {};
+  const versionAnalytics = analyticsData.versionAnalytics || {};
+  const dataQualityAnalytics = analyticsData.dataQualityAnalytics || {};
+  const approvalQueueData = Object.entries(processAnalytics.currentApprovalQueue || {}).map(([name, value]) => ({
+    name: getStageLabel(name),
+    value: value as number,
+  }));
+  const revisionStageData = Object.entries(processAnalytics.revisionByStage || {})
+    .map(([name, value]) => ({
+      name: getStageLabel(name),
+      revisions: value as number,
+    }))
+    .filter(item => item.revisions > 0);
+  const versionReasonData = Object.entries(versionAnalytics.versionReasonCounts || {}).map(([name, value]) => ({
+    name,
+    value: value as number,
+  }));
+  const dataQualityIssueData = Object.entries(dataQualityAnalytics.issueCounts || {}).map(([name, value]) => ({
+    name,
+    value: value as number,
+  }));
+  const employeeAssignmentData = Object.entries(workloadAnalytics.eventAssignmentsByEmployee || {}).map(([name, values]: [string, any]) => ({
+    name,
+    total: values.total,
+    lead: values.lead,
+    support: values.support,
+    department: values.department,
+  }));
 
   const handleRosmolodezhReport = async () => {
     try {
@@ -122,6 +153,13 @@ export function AnalyticsView({
         </Button>
       </div>
 
+      <Tabs defaultValue="events" className="space-y-5">
+        <TabsList className="grid w-full max-w-xl grid-cols-2">
+          <TabsTrigger value="events">Мероприятия</TabsTrigger>
+          <TabsTrigger value="workload">Нагрузка сотрудников</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="events" className="space-y-6">
       {/* Main Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 sm:gap-3">
         <Card className="crm-stat-card emerald crm-gradient-card border-0 crm-shadow-elevated"><CardContent className="p-4 text-center"><p className="text-[10px] sm:text-xs text-muted-foreground font-medium">Всего мероприятий</p><p className="text-3xl font-bold crm-stat-number crm-count-up text-gray-800">{analyticsData.totalEvents}</p></CardContent></Card>
@@ -264,27 +302,6 @@ export function AnalyticsView({
           </CardContent>
         </Card>
 
-        {/* Employee Workload */}
-        <Card className="shadow-sm border-0">
-          <CardHeader><CardTitle className="text-base flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-blue-400" />Загрузка сотрудников</CardTitle></CardHeader>
-          <CardContent>
-            {workloadData.length > 0 ? (
-              <div style={{ width: '100%', aspectRatio: '1.2/1', minHeight: 250 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={workloadData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" angle={-30} textAnchor="end" height={80} tick={{ fontSize: 10 }} />
-                    <YAxis />
-                    <RTooltip />
-                    <Legend />
-                    <Bar dataKey="total" name="Всего задач" fill="#3b82f6" radius={[2, 2, 0, 0]} />
-                    <Bar dataKey="completed" name="Выполнено" fill="#10b981" radius={[2, 2, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            ) : <p className="text-center py-12 text-muted-foreground">Нет данных</p>}
-          </CardContent>
-        </Card>
       </div>
 
       {/* Funding Source Chart */}
@@ -489,6 +506,226 @@ export function AnalyticsView({
           </CardContent>
         </Card>
       )}
+        </TabsContent>
+
+        <TabsContent value="workload" className="space-y-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
+            <Card className="crm-stat-card blue crm-gradient-card border-0 crm-shadow-elevated">
+              <CardContent className="p-4 text-center">
+                <p className="text-[10px] sm:text-xs text-muted-foreground font-medium">Задач всего</p>
+                <p className="text-3xl font-bold crm-stat-number text-gray-800">{workloadAnalytics.totalTasks || 0}</p>
+              </CardContent>
+            </Card>
+            <Card className="crm-stat-card green crm-gradient-card border-0 crm-shadow-elevated">
+              <CardContent className="p-4 text-center">
+                <p className="text-[10px] sm:text-xs text-muted-foreground font-medium">Выполнено задач</p>
+                <p className="text-3xl font-bold crm-stat-number text-[#E4002B]">{workloadAnalytics.completedTasks || 0}</p>
+              </CardContent>
+            </Card>
+            <Card className="crm-stat-card amber crm-gradient-card border-0 crm-shadow-elevated">
+              <CardContent className="p-4 text-center">
+                <p className="text-[10px] sm:text-xs text-muted-foreground font-medium">На согласовании</p>
+                <p className="text-3xl font-bold crm-stat-number text-amber-700">{processAnalytics.currentApprovalTotal || 0}</p>
+              </CardContent>
+            </Card>
+            <Card className="crm-stat-card red crm-gradient-card border-0 crm-shadow-elevated">
+              <CardContent className="p-4 text-center">
+                <p className="text-[10px] sm:text-xs text-muted-foreground font-medium">Возвратов</p>
+                <p className="text-3xl font-bold crm-stat-number text-red-600">{processAnalytics.revisionRequests || 0}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">{Number(processAnalytics.revisionRate || 0).toFixed(1)}% решений</p>
+              </CardContent>
+            </Card>
+            <Card className="crm-stat-card violet crm-gradient-card border-0 crm-shadow-elevated">
+              <CardContent className="p-4 text-center">
+                <p className="text-[10px] sm:text-xs text-muted-foreground font-medium">Версий всего</p>
+                <p className="text-3xl font-bold crm-stat-number text-violet-700">{versionAnalytics.totalVersions || 0}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Среднее: {Number(versionAnalytics.averageVersionsPerEvent || 0).toFixed(1)}</p>
+              </CardContent>
+            </Card>
+            <Card className="crm-stat-card orange crm-gradient-card border-0 crm-shadow-elevated">
+              <CardContent className="p-4 text-center">
+                <p className="text-[10px] sm:text-xs text-muted-foreground font-medium">Проблем качества</p>
+                <p className="text-3xl font-bold crm-stat-number text-orange-700">{dataQualityAnalytics.totalIssues || 0}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Крит.: {dataQualityAnalytics.criticalIssues || 0}</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+            <Card className="shadow-sm border-0">
+              <CardHeader><CardTitle className="text-base flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-blue-400" />Загрузка сотрудников по задачам</CardTitle></CardHeader>
+              <CardContent>
+                {workloadData.length > 0 ? (
+                  <div style={{ width: '100%', aspectRatio: '1.2/1', minHeight: 250 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={workloadData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" angle={-30} textAnchor="end" height={80} tick={{ fontSize: 10 }} />
+                        <YAxis />
+                        <RTooltip />
+                        <Legend />
+                        <Bar dataKey="total" name="Всего задач" fill="#3b82f6" radius={[2, 2, 0, 0]} />
+                        <Bar dataKey="completed" name="Выполнено" fill="#10b981" radius={[2, 2, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : <p className="text-center py-12 text-muted-foreground">Нет данных по задачам</p>}
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm border-0">
+              <CardHeader><CardTitle className="text-base flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-amber-400" />Текущая очередь согласований</CardTitle></CardHeader>
+              <CardContent>
+                {approvalQueueData.length > 0 ? (
+                  <div style={{ width: '100%', aspectRatio: '1.2/1', minHeight: 250 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={approvalQueueData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" angle={-30} textAnchor="end" height={90} tick={{ fontSize: 10 }} />
+                        <YAxis allowDecimals={false} />
+                        <RTooltip />
+                        <Bar dataKey="value" name="Карточек" fill="#f59e0b" radius={[2, 2, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : <p className="text-center py-12 text-muted-foreground">Очередь согласований пуста</p>}
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm border-0">
+              <CardHeader><CardTitle className="text-base flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-red-400" />Возвраты на доработку по этапам</CardTitle></CardHeader>
+              <CardContent>
+                {revisionStageData.length > 0 ? (
+                  <div style={{ width: '100%', aspectRatio: '1.2/1', minHeight: 250 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={revisionStageData} layout="vertical">
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis type="number" allowDecimals={false} />
+                        <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 11 }} />
+                        <RTooltip />
+                        <Bar dataKey="revisions" name="Возвратов" fill="#ef4444" radius={[0, 4, 4, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : <p className="text-center py-12 text-muted-foreground">Возвратов пока нет</p>}
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm border-0">
+              <CardHeader><CardTitle className="text-base flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-violet-400" />Роли сотрудников в мероприятиях</CardTitle></CardHeader>
+              <CardContent>
+                {employeeAssignmentData.length > 0 ? (
+                  <div style={{ width: '100%', aspectRatio: '1.2/1', minHeight: 250 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={employeeAssignmentData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" angle={-30} textAnchor="end" height={80} tick={{ fontSize: 10 }} />
+                        <YAxis allowDecimals={false} />
+                        <RTooltip />
+                        <Legend />
+                        <Bar dataKey="lead" name="Руководитель" fill="#8b5cf6" radius={[2, 2, 0, 0]} />
+                        <Bar dataKey="support" name="Участник" fill="#3b82f6" radius={[2, 2, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : <p className="text-center py-12 text-muted-foreground">Назначений по мероприятиям пока нет</p>}
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+            <Card className="shadow-sm border-0">
+              <CardHeader><CardTitle className="text-base flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-violet-400" />Причины появления версий</CardTitle></CardHeader>
+              <CardContent>
+                {versionReasonData.length > 0 ? (
+                  <div style={{ width: '100%', aspectRatio: '1.2/1', minHeight: 250 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={versionReasonData} cx="50%" cy="50%" outerRadius="78%" dataKey="value" label={({ name, value }) => `${name}: ${value}`}>
+                          {versionReasonData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+                        </Pie>
+                        <RTooltip /><Legend />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : <p className="text-center py-12 text-muted-foreground">Версий пока нет</p>}
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm border-0">
+              <CardHeader><CardTitle className="text-base flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-orange-400" />Качество данных</CardTitle></CardHeader>
+              <CardContent>
+                {dataQualityIssueData.length > 0 ? (
+                  <div className="space-y-2">
+                    {dataQualityIssueData.map(item => (
+                      <div key={item.name} className="flex items-center justify-between gap-3 p-2 rounded-lg border">
+                        <span className="text-xs sm:text-sm font-medium">{item.name}</span>
+                        <Badge variant="secondary">{item.value}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                ) : <p className="text-center py-12 text-muted-foreground">Критичных проблем качества данных не найдено</p>}
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card className="shadow-sm border-0">
+            <CardHeader><CardTitle className="text-base flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-violet-400" />Карточки с наибольшим числом версий</CardTitle></CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader><TableRow><TableHead>Мероприятие</TableHead><TableHead>Статус</TableHead><TableHead>Текущая версия</TableHead><TableHead>Всего версий</TableHead><TableHead>Последняя причина</TableHead></TableRow></TableHeader>
+                  <TableBody>
+                    {(versionAnalytics.versionHotspots || []).length > 0 ? (
+                      versionAnalytics.versionHotspots.map((item: any) => (
+                        <TableRow key={item.eventId}>
+                          <TableCell className="font-medium max-w-[240px] truncate">{item.title}</TableCell>
+                          <TableCell><Badge className={`crm-badge ${getStatusColor(item.status as EventStatus)}`}>{getStatusLabel(item.status as EventStatus)}</Badge></TableCell>
+                          <TableCell>v{item.currentVersion}</TableCell>
+                          <TableCell>{item.versionsCount}</TableCell>
+                          <TableCell className="max-w-[260px] truncate">{item.lastReason || '—'}</TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">Карточек с несколькими версиями пока нет</TableCell></TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm border-0">
+            <CardHeader><CardTitle className="text-base flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-orange-400" />Проблемные карточки по качеству данных</CardTitle></CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader><TableRow><TableHead>Мероприятие</TableHead><TableHead>Статус</TableHead><TableHead>Проблема</TableHead><TableHead>Критичность</TableHead><TableHead>Дата</TableHead></TableRow></TableHeader>
+                  <TableBody>
+                    {(dataQualityAnalytics.problemEvents || []).length > 0 ? (
+                      dataQualityAnalytics.problemEvents.map((item: any, index: number) => (
+                        <TableRow key={`${item.eventId}-${index}`}>
+                          <TableCell className="font-medium max-w-[240px] truncate">{item.title}</TableCell>
+                          <TableCell><Badge className={`crm-badge ${getStatusColor(item.status as EventStatus)}`}>{getStatusLabel(item.status as EventStatus)}</Badge></TableCell>
+                          <TableCell className="max-w-[320px]">{item.issue}</TableCell>
+                          <TableCell>
+                            <Badge variant={item.severity === 'critical' ? 'destructive' : 'secondary'}>
+                              {item.severity === 'critical' ? 'Критично' : 'Предупреждение'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{item.startDate ? formatDate(item.startDate) : '—'}</TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">Проблем качества данных не найдено</TableCell></TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

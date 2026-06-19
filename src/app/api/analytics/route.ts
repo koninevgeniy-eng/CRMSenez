@@ -24,6 +24,20 @@ export async function GET(request: NextRequest) {
         budgetItems: true,
         tasks: true,
         payments: true,
+        approvals: true,
+        versions: true,
+        assignments: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                role: true,
+                department: true,
+              },
+            },
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -114,6 +128,210 @@ export async function GET(request: NextRequest) {
         if (t.completed) workloadByAssignee[t.assignee].completed++;
       }
     });
+    const overdueTasks = allTasks.filter(t => !t.completed && t.dueDate && new Date(t.dueDate) < now).length;
+    const workloadAnalytics = {
+      totalTasks: allTasks.length,
+      completedTasks: allTasks.filter(t => t.completed).length,
+      pendingTasks: allTasks.filter(t => !t.completed).length,
+      overdueTasks,
+      completionRate: allTasks.length > 0
+        ? (allTasks.filter(t => t.completed).length / allTasks.length) * 100
+        : 0,
+      eventAssignmentsByEmployee: events
+        .flatMap(e => e.assignments)
+        .reduce((acc: Record<string, { total: number; lead: number; support: number; department?: string | null }>, assignment) => {
+          const name = assignment.user?.name || assignment.userId;
+          if (!acc[name]) {
+            acc[name] = {
+              total: 0,
+              lead: 0,
+              support: 0,
+              department: assignment.user?.department,
+            };
+          }
+          acc[name].total++;
+          if (assignment.role === 'LEAD') acc[name].lead++;
+          else acc[name].support++;
+          return acc;
+        }, {}),
+    };
+
+    // Approval and lifecycle analytics
+    const allApprovals = events.flatMap(e => e.approvals.map(a => ({
+      ...a,
+      eventTitle: e.title,
+      eventStatus: e.status,
+    })));
+    const revisionDecisions = new Set(['revision_requested', 'actual_budget_revision_requested', 'rejected']);
+    const approvalDecisions = new Set([
+      'approved',
+      'budget_approved',
+      'uin_assigned',
+      'agd_approved',
+      'accepted_by_organization',
+      'event_finished',
+      'actual_budget_methodology_approved',
+      'actual_budget_approved',
+      'archived',
+    ]);
+    const approvalsByStage: Record<string, { total: number; approved: number; revision: number; other: number }> = {};
+    allApprovals.forEach(approval => {
+      if (!approvalsByStage[approval.stage]) {
+        approvalsByStage[approval.stage] = { total: 0, approved: 0, revision: 0, other: 0 };
+      }
+      approvalsByStage[approval.stage].total++;
+      if (revisionDecisions.has(approval.decision)) approvalsByStage[approval.stage].revision++;
+      else if (approvalDecisions.has(approval.decision)) approvalsByStage[approval.stage].approved++;
+      else approvalsByStage[approval.stage].other++;
+    });
+    const revisionByStage = Object.fromEntries(
+      Object.entries(approvalsByStage).map(([stage, stats]) => [stage, stats.revision])
+    );
+    const approvalQueueStatuses = [
+      'methodology_review',
+      'coordination_budget_review',
+      'uin_assignment',
+      'agd_date_review',
+      'methodology_actual_budget_review',
+      'coordination_actual_budget_review',
+      'cancel_requested',
+      'pending_approval',
+      'pending_actual_approval',
+    ];
+    const currentApprovalQueue = approvalQueueStatuses.reduce((acc: Record<string, number>, status) => {
+      const count = events.filter(e => e.status === status).length;
+      if (count > 0) acc[status] = count;
+      return acc;
+    }, {});
+    const revisionRequests = allApprovals.filter(a => revisionDecisions.has(a.decision)).length;
+    const processAnalytics = {
+      currentApprovalQueue,
+      currentApprovalTotal: Object.values(currentApprovalQueue).reduce((sum, value) => sum + value, 0),
+      totalApprovalDecisions: allApprovals.length,
+      revisionRequests,
+      revisionRate: allApprovals.length > 0 ? (revisionRequests / allApprovals.length) * 100 : 0,
+      approvalsByStage,
+      revisionByStage,
+    };
+
+    // Version analytics
+    const allVersions = events.flatMap(e => e.versions.map(v => ({
+      ...v,
+      eventTitle: e.title,
+      eventStatus: e.status,
+      currentVersion: e.currentVersion,
+    })));
+    const eventsWithMultipleVersions = events.filter(e => e.currentVersion > 1 || e.versions.length > 1);
+    const versionReasonCounts = allVersions.reduce((acc: Record<string, number>, version) => {
+      const reason = version.reason || version.source || 'Не указана';
+      acc[reason] = (acc[reason] || 0) + 1;
+      return acc;
+    }, {});
+    const versionHotspots = eventsWithMultipleVersions
+      .map(e => {
+        const sortedVersions = [...e.versions].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+        return {
+          eventId: e.id,
+          title: e.title,
+          status: e.status,
+          currentVersion: e.currentVersion,
+          versionsCount: e.versions.length,
+          lastReason: sortedVersions[0]?.reason || sortedVersions[0]?.source || null,
+          updatedAt: e.updatedAt.toISOString(),
+        };
+      })
+      .sort((a, b) => b.currentVersion - a.currentVersion || b.versionsCount - a.versionsCount)
+      .slice(0, 10);
+    const versionAnalytics = {
+      totalVersions: allVersions.length,
+      averageVersionsPerEvent: totalEvents > 0 ? allVersions.length / totalEvents : 0,
+      eventsWithMultipleVersions: eventsWithMultipleVersions.length,
+      versionReasonCounts,
+      versionHotspots,
+    };
+
+    // Data quality analytics
+    const statusesAfterBudget = new Set([
+      'uin_assignment',
+      'agd_date_review',
+      'calendar_approved',
+      'organization_assignment',
+      'in_progress',
+      'event_finished',
+      'methodology_actual_budget_review',
+      'coordination_actual_budget_review',
+      'actual_budget_approved',
+      'archived',
+      'completed',
+      'approved',
+      'uin_assigned',
+    ]);
+    const calendarStatuses = new Set([
+      'calendar_approved',
+      'organization_assignment',
+      'in_progress',
+      'event_finished',
+      'methodology_actual_budget_review',
+      'coordination_actual_budget_review',
+      'actual_budget_approved',
+      'archived',
+      'completed',
+      'approved',
+    ]);
+    const completedLikeStatuses = new Set(['event_finished', 'actual_budget_approved', 'archived', 'completed']);
+    const dataQualityIssues: Array<{
+      eventId: string;
+      title: string;
+      status: string;
+      issue: string;
+      severity: 'critical' | 'warning';
+      ownerId: string | null;
+      startDate: string | null;
+    }> = [];
+    const addDataIssue = (event: any, issue: string, severity: 'critical' | 'warning' = 'warning') => {
+      dataQualityIssues.push({
+        eventId: event.id,
+        title: event.title,
+        status: event.status,
+        issue,
+        severity,
+        ownerId: event.ownerId || null,
+        startDate: event.startDate ? event.startDate.toISOString() : null,
+      });
+    };
+    events.forEach(e => {
+      if (statusesAfterBudget.has(e.status) && !e.uin) {
+        addDataIssue(e, 'Нет УИН после согласования бюджета', 'critical');
+      }
+      if (!e.startDate || !e.endDate) {
+        addDataIssue(e, 'Не заполнены даты мероприятия', 'critical');
+      }
+      if (calendarStatuses.has(e.status) && !e.venue?.trim()) {
+        addDataIssue(e, 'Не указана площадка для календаря', 'warning');
+      }
+      const hasProgramDocument = e.hasProgram || Boolean(e.program?.trim());
+      const hasPlanDocument = e.hasPlan || Boolean(e.eventPlan?.trim());
+      if (!hasProgramDocument && !hasPlanDocument) {
+        addDataIssue(e, 'Нет программы или плана мероприятия', 'warning');
+      }
+      if (completedLikeStatuses.has(e.status) && getActualSpend(e) <= 0) {
+        addDataIssue(e, 'Не указан фактический бюджет после проведения', 'critical');
+      }
+      if (completedLikeStatuses.has(e.status) && (e.npsScore === null || typeof e.npsScore === 'undefined')) {
+        addDataIssue(e, 'Не указан NPS после проведения', 'warning');
+      }
+    });
+    const dataQualityIssueCounts = dataQualityIssues.reduce((acc: Record<string, number>, item) => {
+      acc[item.issue] = (acc[item.issue] || 0) + 1;
+      return acc;
+    }, {});
+    const dataQualityAnalytics = {
+      totalIssues: dataQualityIssues.length,
+      criticalIssues: dataQualityIssues.filter(i => i.severity === 'critical').length,
+      warningIssues: dataQualityIssues.filter(i => i.severity === 'warning').length,
+      issueCounts: dataQualityIssueCounts,
+      problemEvents: dataQualityIssues.slice(0, 20),
+    };
 
     // Events by status
     const eventsByStatus: Record<string, number> = {};
@@ -207,6 +425,10 @@ export async function GET(request: NextRequest) {
       avgNps,
       npsScores,
       workloadByAssignee,
+      workloadAnalytics,
+      processAnalytics,
+      versionAnalytics,
+      dataQualityAnalytics,
       eventsByStatus,
       eventsByMonth,
       budgetByFunding,
