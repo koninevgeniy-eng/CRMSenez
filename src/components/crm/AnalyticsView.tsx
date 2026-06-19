@@ -31,6 +31,34 @@ const DEPARTMENT_STATUS_FILTERS: Record<string, EventStatus[]> = {
   organization: ['organization_assignment', 'in_progress', 'event_finished'],
   analytics: ['actual_budget_approved', 'archived', 'completed'],
 };
+const SAVED_ANALYTICS_SLICES_KEY = 'crm-senez-analytics-slices';
+const DEFAULT_ANALYTICS_FILTERS = {
+  year: ALL_FILTER_VALUE,
+  from: '',
+  to: '',
+  status: ALL_FILTER_VALUE,
+  department: ALL_FILTER_VALUE,
+  ownerId: ALL_FILTER_VALUE,
+};
+
+type AnalyticsFilters = typeof DEFAULT_ANALYTICS_FILTERS;
+
+interface SavedAnalyticsSlice {
+  id: string;
+  name: string;
+  filters: AnalyticsFilters;
+  createdAt: string;
+}
+
+function escapeHtml(value: unknown) {
+  return String(value ?? '').replace(/[&<>"']/g, char => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;',
+  }[char] || char));
+}
 
 interface AnalyticsViewProps {
   events: EventData[];
@@ -44,16 +72,20 @@ export function AnalyticsView({
   users = [],
 }: AnalyticsViewProps) {
   const currentYear = new Date().getFullYear();
-  const [filters, setFilters] = useState({
-    year: ALL_FILTER_VALUE,
-    from: '',
-    to: '',
-    status: ALL_FILTER_VALUE,
-    department: ALL_FILTER_VALUE,
-    ownerId: ALL_FILTER_VALUE,
-  });
+  const [filters, setFilters] = useState<AnalyticsFilters>(DEFAULT_ANALYTICS_FILTERS);
   const [liveAnalyticsData, setLiveAnalyticsData] = useState<any>(initialAnalyticsData);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [sliceName, setSliceName] = useState('');
+  const [savedSlices, setSavedSlices] = useState<SavedAnalyticsSlice[]>([]);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(SAVED_ANALYTICS_SLICES_KEY);
+      if (stored) setSavedSlices(JSON.parse(stored));
+    } catch {
+      setSavedSlices([]);
+    }
+  }, []);
 
   useEffect(() => {
     setLiveAnalyticsData(initialAnalyticsData);
@@ -111,6 +143,11 @@ export function AnalyticsView({
     }));
   }, [events, userById]);
 
+  const getOwnerDisplay = (ownerId?: string | null) => {
+    if (!ownerId) return 'Не указан';
+    return userById.get(ownerId)?.name || ownerOptions.find(owner => owner.id === ownerId)?.label || `ID ${ownerId.slice(0, 8)}`;
+  };
+
   const filteredEvents = useMemo(() => events.filter(event => {
     if (filters.status !== ALL_FILTER_VALUE) {
       if (event.status !== filters.status) return false;
@@ -146,20 +183,52 @@ export function AnalyticsView({
     filters.department !== ALL_FILTER_VALUE,
     filters.ownerId !== ALL_FILTER_VALUE,
   ].filter(Boolean).length;
+  const filterSummaryRows: [string, string][] = [
+    ['Год', filters.year === ALL_FILTER_VALUE ? 'Все годы' : filters.year],
+    ['Дата с', filters.from || 'Не задана'],
+    ['Дата по', filters.to || 'Не задана'],
+    ['Департамент', filters.department === ALL_FILTER_VALUE
+      ? 'Все департаменты'
+      : DEPARTMENTS.find(department => department.id === filters.department)?.shortName || filters.department],
+    ['Статус', filters.status === ALL_FILTER_VALUE ? 'Все статусы' : getStageLabel(filters.status)],
+    ['Владелец', filters.ownerId === ALL_FILTER_VALUE ? 'Все владельцы' : getOwnerDisplay(filters.ownerId)],
+  ];
 
-  const updateFilter = (key: keyof typeof filters, value: string) => {
+  const persistSavedSlices = (slices: SavedAnalyticsSlice[]) => {
+    setSavedSlices(slices);
+    window.localStorage.setItem(SAVED_ANALYTICS_SLICES_KEY, JSON.stringify(slices));
+  };
+
+  const updateFilter = (key: keyof AnalyticsFilters, value: string) => {
     setFilters(prev => ({ ...prev, [key]: value }));
   };
 
   const resetFilters = () => {
-    setFilters({
-      year: ALL_FILTER_VALUE,
-      from: '',
-      to: '',
-      status: ALL_FILTER_VALUE,
-      department: ALL_FILTER_VALUE,
-      ownerId: ALL_FILTER_VALUE,
-    });
+    setFilters({ ...DEFAULT_ANALYTICS_FILTERS });
+  };
+
+  const handleSaveSlice = () => {
+    const name = sliceName.trim() || `Срез ${new Date().toLocaleString('ru-RU')}`;
+    const slice: SavedAnalyticsSlice = {
+      id: `${Date.now()}`,
+      name,
+      filters: { ...filters },
+      createdAt: new Date().toISOString(),
+    };
+    persistSavedSlices([slice, ...savedSlices].slice(0, 20));
+    setSliceName('');
+    toast({ title: 'Срез сохранён', description: name });
+  };
+
+  const handleApplySlice = (sliceId: string) => {
+    const slice = savedSlices.find(item => item.id === sliceId);
+    if (!slice) return;
+    setFilters(slice.filters);
+    toast({ title: 'Срез применён', description: slice.name });
+  };
+
+  const handleDeleteSlice = (sliceId: string) => {
+    persistSavedSlices(savedSlices.filter(item => item.id !== sliceId));
   };
 
   if (!analyticsData) return (
@@ -273,6 +342,241 @@ export function AnalyticsView({
     }
   };
 
+  const getAnalyticsFilename = (extension: string) => {
+    const date = new Date().toLocaleDateString('ru-RU').replace(/\./g, '-');
+    const department = filters.department !== ALL_FILTER_VALUE
+      ? DEPARTMENTS.find(item => item.id === filters.department)?.shortName || filters.department
+      : 'Все';
+    const yearPart = filters.year !== ALL_FILTER_VALUE ? filters.year : 'все-годы';
+    return `Аналитический_срез_${department}_${yearPart}_${date}.${extension}`;
+  };
+
+  const handleExportAnalyticsSlice = async () => {
+    try {
+      const eventRows = filteredEvents.map(event => [
+        event.uin || '',
+        event.title,
+        getStatusLabel(event.status),
+        event.startDate ? formatDate(event.startDate) : '',
+        event.endDate ? formatDate(event.endDate) : '',
+        event.participantCount || event.totalParticipants || 0,
+        event.venue || '',
+        event.campus || '',
+        event.budget || 0,
+        event.actualCost || 0,
+        event.npsScore ?? '',
+        getOwnerDisplay(event.ownerId),
+      ]);
+      await exportWorkbook(
+        getAnalyticsFilename('xlsx'),
+        [
+          {
+            name: 'Сводка',
+            columnWidths: [34, 28],
+            rows: [
+              ['АНАЛИТИЧЕСКИЙ СРЕЗ CRM СЕНЕЖ', ''],
+              ['Сформирован', new Date().toLocaleString('ru-RU')],
+              ['', ''],
+              ['Фильтры', ''],
+              ...filterSummaryRows,
+              ['', ''],
+              ['Мероприятия', ''],
+              ['Всего мероприятий', analyticsData.totalEvents || 0],
+              ['Завершено', analyticsData.completedEvents || 0],
+              ['В работе', analyticsData.inProgressEvents || 0],
+              ['На согласовании / в процессе', analyticsData.pendingEvents || 0],
+              ['Участников за период', participantAnalytics.ytdParticipants || 0],
+              ['Прогноз участников на год', participantAnalytics.forecastYearParticipants || 0],
+              ['Средняя трата на участника', participantAnalytics.averageSpendPerParticipant || 0],
+              ['Средний NPS', analyticsData.avgNps || 0],
+              ['Плановый бюджет', analyticsData.totalBudget || 0],
+              ['Фактические траты', analyticsData.totalActualCost || 0],
+              ['', ''],
+              ['Нагрузка и качество', ''],
+              ['Всего задач', workloadAnalytics.totalTasks || 0],
+              ['Выполнено задач', workloadAnalytics.completedTasks || 0],
+              ['Просрочено задач', workloadAnalytics.overdueTasks || 0],
+              ['На согласовании', processAnalytics.currentApprovalTotal || 0],
+              ['Возвратов на доработку', processAnalytics.revisionRequests || 0],
+              ['Версий всего', versionAnalytics.totalVersions || 0],
+              ['Проблем качества данных', dataQualityAnalytics.totalIssues || 0],
+            ],
+          },
+          {
+            name: 'Мероприятия',
+            columnWidths: [16, 42, 24, 14, 14, 14, 24, 14, 16, 16, 10, 24],
+            rows: [
+              ['УИН', 'Мероприятие', 'Статус', 'Дата начала', 'Дата окончания', 'Участников', 'Площадка', 'Кампус', 'Бюджет', 'Факт', 'NPS', 'Владелец'],
+              ...eventRows,
+            ],
+          },
+          {
+            name: 'Бюджет',
+            columnWidths: [30, 18, 18],
+            rows: [
+              ['Категория', 'План', 'Факт'],
+              ...budgetCategoryData.map(item => [item.name, item.planned, item.actual]),
+            ],
+          },
+          {
+            name: 'Согласования',
+            columnWidths: [30, 14, 14, 14, 14],
+            rows: [
+              ['Этап', 'Всего решений', 'Согласовано', 'Возвратов', 'Прочее'],
+              ...Object.entries(processAnalytics.approvalsByStage || {}).map(([stage, stats]: [string, any]) => [
+                getStageLabel(stage),
+                stats.total || 0,
+                stats.approved || 0,
+                stats.revision || 0,
+                stats.other || 0,
+              ]),
+            ],
+          },
+          {
+            name: 'Нагрузка',
+            columnWidths: [28, 14, 14, 14, 14],
+            rows: [
+              ['Сотрудник', 'Всего задач', 'Выполнено', 'Руководитель', 'Участник'],
+              ...workloadData.map(item => {
+                const assignment = employeeAssignmentData.find(employee => employee.name === item.name);
+                return [item.name, item.total, item.completed, assignment?.lead || 0, assignment?.support || 0];
+              }),
+              ...employeeAssignmentData
+                .filter(employee => !workloadData.some(item => item.name === employee.name))
+                .map(employee => [employee.name, 0, 0, employee.lead, employee.support]),
+            ],
+          },
+          {
+            name: 'Качество данных',
+            columnWidths: [42, 24, 42, 16, 14],
+            rows: [
+              ['Мероприятие', 'Статус', 'Проблема', 'Критичность', 'Дата'],
+              ...(dataQualityAnalytics.problemEvents || []).map((item: any) => [
+                item.title,
+                getStageLabel(item.status),
+                item.issue,
+                item.severity === 'critical' ? 'Критично' : 'Предупреждение',
+                item.startDate ? formatDate(item.startDate) : '',
+              ]),
+            ],
+          },
+          {
+            name: 'Версии',
+            columnWidths: [42, 24, 14, 14, 34],
+            rows: [
+              ['Мероприятие', 'Статус', 'Текущая версия', 'Всего версий', 'Последняя причина'],
+              ...(versionAnalytics.versionHotspots || []).map((item: any) => [
+                item.title,
+                getStageLabel(item.status),
+                item.currentVersion,
+                item.versionsCount,
+                item.lastReason || '',
+              ]),
+            ],
+          },
+        ]
+      );
+      toast({ title: 'Срез экспортирован', description: 'Excel-файл сформирован по текущим фильтрам' });
+    } catch {
+      toast({ title: 'Ошибка экспорта среза', variant: 'destructive' });
+    }
+  };
+
+  const handlePrintAnalyticsSlice = () => {
+    const printWindow = window.open('', '_blank', 'width=1100,height=800');
+    if (!printWindow) {
+      toast({ title: 'Не удалось открыть окно печати', description: 'Проверьте блокировку всплывающих окон', variant: 'destructive' });
+      return;
+    }
+    const summaryRows = [
+      ['Всего мероприятий', analyticsData.totalEvents || 0],
+      ['Участников за период', participantAnalytics.ytdParticipants || 0],
+      ['Прогноз участников на год', participantAnalytics.forecastYearParticipants || 0],
+      ['Средняя трата на участника', formatCurrency(participantAnalytics.averageSpendPerParticipant || 0)],
+      ['Плановый бюджет', formatCurrency(analyticsData.totalBudget || 0)],
+      ['Фактические траты', formatCurrency(analyticsData.totalActualCost || 0)],
+      ['Средний NPS', analyticsData.avgNps ? analyticsData.avgNps.toFixed(1) : '—'],
+      ['На согласовании', processAnalytics.currentApprovalTotal || 0],
+      ['Возвратов на доработку', processAnalytics.revisionRequests || 0],
+      ['Проблем качества данных', dataQualityAnalytics.totalIssues || 0],
+    ];
+    const html = `<!doctype html>
+      <html lang="ru">
+        <head>
+          <meta charset="utf-8" />
+          <title>Аналитический срез CRM Сенеж</title>
+          <style>
+            body { font-family: Arial, sans-serif; color: #111827; margin: 32px; }
+            h1 { margin: 0 0 8px; font-size: 24px; }
+            h2 { margin: 24px 0 10px; font-size: 16px; }
+            p { color: #6b7280; margin: 0 0 16px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
+            th, td { border: 1px solid #e5e7eb; padding: 8px; font-size: 12px; text-align: left; vertical-align: top; }
+            th { background: #f9fafb; }
+            .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+            @media print { body { margin: 18mm; } .no-print { display: none; } }
+          </style>
+        </head>
+        <body>
+          <h1>Аналитический срез CRM Сенеж</h1>
+          <p>Сформирован: ${escapeHtml(new Date().toLocaleString('ru-RU'))}</p>
+          <div class="grid">
+            <section>
+              <h2>Фильтры</h2>
+              <table>
+                <tbody>
+                  ${filterSummaryRows.map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`).join('')}
+                </tbody>
+              </table>
+            </section>
+            <section>
+              <h2>Сводка</h2>
+              <table>
+                <tbody>
+                  ${summaryRows.map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`).join('')}
+                </tbody>
+              </table>
+            </section>
+          </div>
+          <h2>Мероприятия</h2>
+          <table>
+            <thead>
+              <tr><th>УИН</th><th>Мероприятие</th><th>Статус</th><th>Даты</th><th>Участников</th><th>Бюджет</th><th>Факт</th><th>NPS</th></tr>
+            </thead>
+            <tbody>
+              ${filteredEvents.map(event => `<tr>
+                <td>${escapeHtml(event.uin || '—')}</td>
+                <td>${escapeHtml(event.title)}</td>
+                <td>${escapeHtml(getStatusLabel(event.status))}</td>
+                <td>${escapeHtml(`${event.startDate ? formatDate(event.startDate) : '—'} - ${event.endDate ? formatDate(event.endDate) : '—'}`)}</td>
+                <td>${escapeHtml(event.participantCount || event.totalParticipants || 0)}</td>
+                <td>${escapeHtml(formatCurrency(event.budget || 0))}</td>
+                <td>${escapeHtml(formatCurrency(event.actualCost || 0))}</td>
+                <td>${escapeHtml(event.npsScore ?? '—')}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+          <h2>Проблемы качества данных</h2>
+          <table>
+            <thead><tr><th>Мероприятие</th><th>Статус</th><th>Проблема</th><th>Критичность</th></tr></thead>
+            <tbody>
+              ${(dataQualityAnalytics.problemEvents || []).map((item: any) => `<tr>
+                <td>${escapeHtml(item.title)}</td>
+                <td>${escapeHtml(getStageLabel(item.status))}</td>
+                <td>${escapeHtml(item.issue)}</td>
+                <td>${escapeHtml(item.severity === 'critical' ? 'Критично' : 'Предупреждение')}</td>
+              </tr>`).join('') || '<tr><td colspan="4">Проблем качества данных не найдено</td></tr>'}
+            </tbody>
+          </table>
+          <button class="no-print" onclick="window.print()">Печать / сохранить PDF</button>
+        </body>
+      </html>`;
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
@@ -280,9 +584,6 @@ export function AnalyticsView({
           <h2 className="text-2xl font-bold tracking-tight">Аналитика</h2>
           <p className="text-muted-foreground text-sm mt-1">Анализ мероприятий и нагрузки сотрудников с фильтрами по периоду и процессу</p>
         </div>
-        <Button variant="outline" size="sm" className="gap-1.5" onClick={handleRosmolodezhReport}>
-          <FileSpreadsheet className="h-3.5 w-3.5" /> Отчёт Росмолодёжи
-        </Button>
       </div>
 
       <Card className="shadow-sm border-0">
@@ -368,6 +669,57 @@ export function AnalyticsView({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 border-t pt-3">
+            <div className="space-y-2">
+              <div>
+                <p className="text-sm font-semibold">Сохранённые срезы</p>
+                <p className="text-xs text-muted-foreground">Срезы сохраняются в этом браузере и быстро возвращают набор фильтров.</p>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Input
+                  value={sliceName}
+                  onChange={(event) => setSliceName(event.target.value)}
+                  placeholder="Например: Координация за II квартал"
+                />
+                <Button variant="outline" onClick={handleSaveSlice}>Сохранить срез</Button>
+              </div>
+              {savedSlices.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {savedSlices.map(slice => (
+                    <div key={slice.id} className="flex items-center gap-1 rounded-lg border bg-background p-1">
+                      <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => handleApplySlice(slice.id)}>
+                        {slice.name}
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground" onClick={() => handleDeleteSlice(slice.id)}>
+                        x
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">Пока нет сохранённых срезов.</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <div>
+                <p className="text-sm font-semibold">Экспорт текущего среза</p>
+                <p className="text-xs text-muted-foreground">Выгрузка использует выбранные фильтры и текущие данные обеих вкладок.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="default" onClick={handleExportAnalyticsSlice}>
+                  Excel-срез
+                </Button>
+                <Button variant="outline" onClick={handlePrintAnalyticsSlice}>
+                  PDF / печать
+                </Button>
+                <Button variant="outline" className="gap-1.5" onClick={handleRosmolodezhReport}>
+                  <FileSpreadsheet className="h-3.5 w-3.5" /> Росмолодёжь
+                </Button>
+              </div>
             </div>
           </div>
         </CardContent>
