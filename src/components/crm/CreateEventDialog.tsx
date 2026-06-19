@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Plus, X, Star, Users, Banknote, Camera, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,15 +12,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from '@/hooks/use-toast';
-import { BUDGET_CATEGORIES } from '@/lib/crm-types';
+import { BUDGET_CATEGORIES, ReferenceDictionary } from '@/lib/crm-types';
 import { formatCurrency } from '@/lib/crm-utils';
 import { apiFetch } from '@/lib/api-fetch';
+import { getReferenceOptions } from '@/lib/reference-utils';
 
 function CreateEventDialog({ open, onClose, onCreate }: { open: boolean; onClose: () => void; onCreate: () => void }) {
   const [form, setForm] = useState<any>({
     title: '', status: 'draft', programDirector: '', startDate: '', endDate: '',
     participantCount: '', venue: '', campus: 'Южный', budget: '', fundingSource: '',
-    program: '', eventPlan: '', hasProgram: false, hasPlan: false,
+    programType: '', program: '', eventPlan: '', hasProgram: false, hasPlan: false,
     targetAudience: '', customerName: '', contractorName: '',
     coOrganizers: '', vipGuests: '',
     speakers: [], budgetItems: [], tasks: [], contacts: [], rooms: [],
@@ -28,6 +29,20 @@ function CreateEventDialog({ open, onClose, onCreate }: { open: boolean; onClose
   });
   const [createTab, setCreateTab] = useState('main');
   const [validationErrors, setValidationErrors] = useState<{ title?: string; startDate?: string; endDate?: string; program?: string }>({});
+  const [dictionaries, setDictionaries] = useState<ReferenceDictionary[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    apiFetch('/api/dictionaries')
+      .then(async res => {
+        if (!res.ok) return;
+        const data = await res.json();
+        setDictionaries(data.dictionaries || []);
+      })
+      .catch(() => {});
+  }, [open]);
+
+  const referenceOptions = (code: string, currentValue?: string) => getReferenceOptions(dictionaries, code, currentValue);
 
   const updateField = (field: string, value: any) => {
     setForm((prev: any) => ({ ...prev, [field]: value }));
@@ -101,7 +116,7 @@ function CreateEventDialog({ open, onClose, onCreate }: { open: boolean; onClose
         setForm({
           title: '', status: 'draft', programDirector: '', startDate: '', endDate: '',
           participantCount: '', venue: '', campus: 'Южный', budget: '', fundingSource: '',
-          program: '', eventPlan: '', hasProgram: false, hasPlan: false,
+          programType: '', program: '', eventPlan: '', hasProgram: false, hasPlan: false,
           targetAudience: '', customerName: '', contractorName: '',
           coOrganizers: '', vipGuests: '',
           speakers: [], budgetItems: [], tasks: [], contacts: [], rooms: [],
@@ -156,15 +171,18 @@ function CreateEventDialog({ open, onClose, onCreate }: { open: boolean; onClose
                 <div><Label className="text-sm font-medium">Заказчик</Label><Input value={form.customerName} onChange={e => updateField('customerName', e.target.value)} className="mt-1" /></div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                <div><Label className="text-sm font-medium">Площадка</Label><Input value={form.venue} onChange={e => updateField('venue', e.target.value)} placeholder="ТехноСенеж" className="mt-1" /></div>
-                <div><Label className="text-sm font-medium">Кампус</Label><Select value={form.campus} onValueChange={v => updateField('campus', v)}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Южный">Южный</SelectItem><SelectItem value="Северный">Северный</SelectItem></SelectContent></Select></div>
+                <div><Label className="text-sm font-medium">Тип мероприятия</Label><Select value={form.programType} onValueChange={v => updateField('programType', v)}><SelectTrigger className="mt-1"><SelectValue placeholder="Выберите тип" /></SelectTrigger><SelectContent>{referenceOptions('event_types', form.programType).map(item => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></div>
+                <div><Label className="text-sm font-medium">Площадка</Label><Select value={form.venue} onValueChange={v => updateField('venue', v)}><SelectTrigger className="mt-1"><SelectValue placeholder="Выберите площадку" /></SelectTrigger><SelectContent>{referenceOptions('venues', form.venue).map(item => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                <div><Label className="text-sm font-medium">Кампус</Label><Select value={form.campus} onValueChange={v => updateField('campus', v)}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent>{referenceOptions('campuses', form.campus).map(item => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></div>
+                <div><Label className="text-sm font-medium">Источник финансирования</Label><Select value={form.fundingSource} onValueChange={v => updateField('fundingSource', v)}><SelectTrigger className="mt-1"><SelectValue placeholder="Выберите" /></SelectTrigger><SelectContent>{referenceOptions('funding_sources', form.fundingSource).map(item => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div><Label className="text-sm font-medium">Бюджет (₽)</Label><Input type="number" value={form.budget} onChange={e => updateField('budget', e.target.value)} className="mt-1" /></div>
-                <div><Label className="text-sm font-medium">Источник финансирования</Label><Select value={form.fundingSource} onValueChange={v => updateField('fundingSource', v)}><SelectTrigger className="mt-1"><SelectValue placeholder="Выберите" /></SelectTrigger><SelectContent><SelectItem value="Образовательная субсидия">Образовательная субсидия</SelectItem><SelectItem value="Субсидия ВГ">Субсидия ВГ</SelectItem><SelectItem value="Внебюджет">Внебюджет</SelectItem><SelectItem value="Предпринимательская деятельность">Предпринимательская деятельность</SelectItem></SelectContent></Select></div>
+                <div><Label className="text-sm font-medium">Количество участников</Label><Input type="number" value={form.participantCount} onChange={e => updateField('participantCount', e.target.value)} className="mt-1" /></div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                <div><Label className="text-sm font-medium">Количество участников</Label><Input type="number" value={form.participantCount} onChange={e => updateField('participantCount', e.target.value)} className="mt-1" /></div>
                 <div><Label className="text-sm font-medium">Подрядчик</Label><Input value={form.contractorName} onChange={e => updateField('contractorName', e.target.value)} className="mt-1" /></div>
               </div>
               <div><Label className="text-sm font-medium">Соорганизаторы</Label><Textarea value={form.coOrganizers} onChange={e => updateField('coOrganizers', e.target.value)} placeholder="Перечислите соорганизаторов и их задачи" className="mt-1" /></div>

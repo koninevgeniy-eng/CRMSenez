@@ -26,6 +26,36 @@ model User {
   sessions        Session[]
 }
 
+model ReferenceDictionary {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String?
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items ReferenceItem[]
+}
+
+model ReferenceItem {
+  id           String   @id @default(cuid())
+  dictionaryId String
+  value        String
+  label        String
+  description  String?
+  sortOrder    Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdBy    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  dictionary ReferenceDictionary @relation(fields: [dictionaryId], references: [id], onDelete: Cascade)
+
+  @@unique([dictionaryId, value])
+  @@index([dictionaryId, isActive])
+}
+
 model Event {
   id          String   @id @default(cuid())
   uin         String?  @unique

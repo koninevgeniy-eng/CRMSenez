@@ -40,7 +40,7 @@ import { Separator } from '@/components/ui/separator';
 import { ClipboardList } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import {
-  EventData, EventStatus, WORKFLOW_STAGES,
+  EventData, EventStatus, ReferenceDictionary, WORKFLOW_STAGES,
 } from '@/lib/crm-types';
 import {
   getStatusLabel, getStatusColor, formatDate, formatCurrency,
@@ -50,6 +50,7 @@ import {
 } from '@/lib/crm-utils';
 import { apiFetch } from '@/lib/api-fetch';
 import { EVENT_FORM_FIELDS } from '@/lib/event-policy';
+import { getReferenceOptions } from '@/lib/reference-utils';
 import { AssignmentsTab } from '@/components/crm/AssignmentsTab';
 import { ContactsTab } from '@/components/crm/ContactsTab';
 import { SpeakersTab } from '@/components/crm/SpeakersTab';
@@ -162,6 +163,20 @@ function EventDetailDialog({ event, open, onClose, onUpdate, onDelete, onWorkflo
   };
   const [formData, setFormData] = useState<any>(initialFormData);
   const [editing, setEditing] = useState(false);
+  const [dictionaries, setDictionaries] = useState<ReferenceDictionary[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    apiFetch('/api/dictionaries')
+      .then(async res => {
+        if (!res.ok) return;
+        const data = await res.json();
+        setDictionaries(data.dictionaries || []);
+      })
+      .catch(() => {});
+  }, [open]);
+
+  const referenceOptions = (code: string, currentValue?: string | null) => getReferenceOptions(dictionaries, code, currentValue);
 
   const handleSave = async () => {
     try {
@@ -348,9 +363,10 @@ function EventDetailDialog({ event, open, onClose, onUpdate, onDelete, onWorkflo
                 <div className="min-w-0"><Label className="text-xs text-muted-foreground">Дата начала</Label>{editing ? <Input type="date" value={formData.startDate || ''} onChange={e => updateField('startDate', e.target.value)} /> : <p>{formatDate(event.startDate)}</p>}</div>
                 <div className="min-w-0"><Label className="text-xs text-muted-foreground">Дата окончания</Label>{editing ? <Input type="date" value={formData.endDate || ''} onChange={e => updateField('endDate', e.target.value)} /> : <p>{formatDate(event.endDate)}</p>}</div>
                 <div className="min-w-0"><Label className="text-xs text-muted-foreground">Заказчик</Label>{editing ? <Input value={formData.customerName || ''} onChange={e => updateField('customerName', e.target.value)} /> : <p className="break-words">{event.customerName || '—'}</p>}</div>
-                <div className="min-w-0"><Label className="text-xs text-muted-foreground">Источник финансирования</Label>{editing ? <Select value={formData.fundingSource || ''} onValueChange={v => updateField('fundingSource', v)}><SelectTrigger><SelectValue placeholder="Выберите" /></SelectTrigger><SelectContent><SelectItem value="Образовательная субсидия">Образовательная субсидия</SelectItem><SelectItem value="Субсидия ВГ">Субсидия ВГ</SelectItem><SelectItem value="Внебюджет">Внебюджет</SelectItem><SelectItem value="Предпринимательская деятельность">Предпринимательская деятельность</SelectItem></SelectContent></Select> : <p className="break-words">{event.fundingSource || '—'}</p>}</div>
-                <div className="min-w-0"><Label className="text-xs text-muted-foreground">Площадка</Label>{editing ? <Input value={formData.venue || ''} onChange={e => updateField('venue', e.target.value)} /> : <p className="break-words">{event.venue || '—'}</p>}</div>
-                <div className="min-w-0"><Label className="text-xs text-muted-foreground">Кампус</Label>{editing ? <Select value={formData.campus || ''} onValueChange={v => updateField('campus', v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Южный">Южный</SelectItem><SelectItem value="Северный">Северный</SelectItem></SelectContent></Select> : <p>{event.campus || '—'}</p>}</div>
+                <div className="min-w-0"><Label className="text-xs text-muted-foreground">Тип мероприятия</Label>{editing ? <Select value={formData.programType || ''} onValueChange={v => updateField('programType', v)}><SelectTrigger><SelectValue placeholder="Выберите тип" /></SelectTrigger><SelectContent>{referenceOptions('event_types', formData.programType).map(item => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select> : <p className="break-words">{event.programType || '—'}</p>}</div>
+                <div className="min-w-0"><Label className="text-xs text-muted-foreground">Источник финансирования</Label>{editing ? <Select value={formData.fundingSource || ''} onValueChange={v => updateField('fundingSource', v)}><SelectTrigger><SelectValue placeholder="Выберите" /></SelectTrigger><SelectContent>{referenceOptions('funding_sources', formData.fundingSource).map(item => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select> : <p className="break-words">{event.fundingSource || '—'}</p>}</div>
+                <div className="min-w-0"><Label className="text-xs text-muted-foreground">Площадка</Label>{editing ? <Select value={formData.venue || ''} onValueChange={v => updateField('venue', v)}><SelectTrigger><SelectValue placeholder="Выберите площадку" /></SelectTrigger><SelectContent>{referenceOptions('venues', formData.venue).map(item => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select> : <p className="break-words">{event.venue || '—'}</p>}</div>
+                <div className="min-w-0"><Label className="text-xs text-muted-foreground">Кампус</Label>{editing ? <Select value={formData.campus || ''} onValueChange={v => updateField('campus', v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{referenceOptions('campuses', formData.campus).map(item => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select> : <p>{event.campus || '—'}</p>}</div>
                 <div className="min-w-0"><Label className="text-xs text-muted-foreground">Бюджет</Label>{editing ? <Input type="number" value={formData.budget || ''} onChange={e => updateField('budget', parseFloat(e.target.value))} /> : <p className="font-semibold">{formatCurrency(event.budget)}</p>}</div>
                 <div className="min-w-0"><Label className="text-xs text-muted-foreground">Участников</Label>{editing ? <Input type="number" value={formData.participantCount || ''} onChange={e => updateField('participantCount', parseInt(e.target.value))} /> : <p>{event.participantCount || '—'}</p>}</div>
                 <div className="min-w-0"><Label className="text-xs text-muted-foreground">УИН</Label>{editing ? <Input value={formData.uin || ''} onChange={e => updateField('uin', e.target.value)} /> : <p>{event.uin || '—'}</p>}</div>

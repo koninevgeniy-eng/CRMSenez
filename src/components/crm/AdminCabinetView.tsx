@@ -20,7 +20,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Separator } from '@/components/ui/separator';
-import { EventData, UserData, DEPARTMENTS, STATUS_LABELS, STATUS_COLORS, USER_ROLE_LABELS, USER_ROLE_COLORS, UserRole } from '@/lib/crm-types';
+import { EventData, ReferenceDictionary, ReferenceItem, UserData, DEPARTMENTS, STATUS_LABELS, STATUS_COLORS, USER_ROLE_LABELS, USER_ROLE_COLORS, UserRole } from '@/lib/crm-types';
 import { getStatusLabel, getStatusColor, formatDate, formatCurrency } from '@/lib/crm-utils';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from 'recharts';
 import { apiFetch } from '@/lib/api-fetch';
@@ -260,6 +260,239 @@ function FinancialReportTab({ events }: FinancialReportTabProps) {
                     <TableCell className="text-right">{formatCurrency(data.actual)}</TableCell>
                   </TableRow>
                 ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function ReferenceDictionariesTab() {
+  const [dictionaries, setDictionaries] = useState<ReferenceDictionary[]>([]);
+  const [selectedCode, setSelectedCode] = useState('event_types');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    itemId: '',
+    label: '',
+    value: '',
+    description: '',
+    sortOrder: '0',
+    isActive: true,
+  });
+
+  const selectedDictionary = dictionaries.find(item => item.code === selectedCode);
+
+  const fetchDictionaries = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await apiFetch('/api/dictionaries?includeInactive=true');
+      if (!res.ok) {
+        toast({ title: 'Ошибка загрузки справочников', variant: 'destructive' });
+        return;
+      }
+      const data = await res.json();
+      const nextDictionaries = data.dictionaries || [];
+      setDictionaries(nextDictionaries);
+      if (!nextDictionaries.some((item: ReferenceDictionary) => item.code === selectedCode) && nextDictionaries[0]) {
+        setSelectedCode(nextDictionaries[0].code);
+      }
+    } catch {
+      toast({ title: 'Ошибка загрузки справочников', variant: 'destructive' });
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedCode]);
+
+  useEffect(() => { fetchDictionaries(); }, [fetchDictionaries]);
+
+  const resetForm = () => setForm({
+    itemId: '',
+    label: '',
+    value: '',
+    description: '',
+    sortOrder: '0',
+    isActive: true,
+  });
+
+  const editItem = (item: ReferenceItem) => setForm({
+    itemId: item.id,
+    label: item.label,
+    value: item.value,
+    description: item.description || '',
+    sortOrder: String(item.sortOrder ?? 0),
+    isActive: item.isActive,
+  });
+
+  const saveItem = async () => {
+    if (!selectedDictionary || !form.label.trim()) {
+      toast({ title: 'Укажите название элемента', variant: 'destructive' });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const res = await apiFetch('/api/dictionaries', {
+        method: form.itemId ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          itemId: form.itemId || undefined,
+          dictionaryId: selectedDictionary.id,
+          dictionaryCode: selectedDictionary.code,
+          label: form.label,
+          value: form.value || form.label,
+          description: form.description,
+          sortOrder: parseInt(form.sortOrder, 10) || 0,
+          isActive: form.isActive,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast({ title: data.error || 'Ошибка сохранения элемента', variant: 'destructive' });
+        return;
+      }
+      toast({ title: form.itemId ? 'Элемент справочника обновлен' : 'Элемент справочника создан' });
+      resetForm();
+      fetchDictionaries();
+    } catch {
+      toast({ title: 'Ошибка сохранения элемента', variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleItem = async (item: ReferenceItem) => {
+    setSaving(true);
+    try {
+      const res = await apiFetch('/api/dictionaries', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          itemId: item.id,
+          label: item.label,
+          value: item.value,
+          description: item.description || '',
+          sortOrder: item.sortOrder,
+          isActive: !item.isActive,
+        }),
+      });
+      if (res.ok) {
+        fetchDictionaries();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast({ title: data.error || 'Ошибка обновления элемента', variant: 'destructive' });
+      }
+    } catch {
+      toast({ title: 'Ошибка обновления элемента', variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Card className="shadow-sm border-0">
+        <CardContent className="p-8 text-center">
+          <RefreshCw className="h-8 w-8 mx-auto text-muted-foreground/40 mb-3 animate-spin" />
+          <p className="text-muted-foreground">Загрузка справочников...</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card className="shadow-sm border-0">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2"><ClipboardList className="h-5 w-5 text-[#E4002B]" />Пользовательские справочники</CardTitle>
+          <CardDescription>Единые значения для карточек мероприятий и будущей аналитики</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-[260px_1fr] gap-3 sm:gap-4">
+            <div className="space-y-2">
+              <Label>Справочник</Label>
+              <Select value={selectedCode} onValueChange={(value) => { setSelectedCode(value); resetForm(); }}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {dictionaries.map(dictionary => (
+                    <SelectItem key={dictionary.code} value={dictionary.code}>{dictionary.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedDictionary?.description && <p className="text-xs text-muted-foreground">{selectedDictionary.description}</p>}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 items-end">
+              <div className="sm:col-span-2 space-y-2">
+                <Label>Название</Label>
+                <Input value={form.label} onChange={e => setForm(prev => ({ ...prev, label: e.target.value }))} placeholder="Например: ТехноСенеж" />
+              </div>
+              <div className="space-y-2">
+                <Label>Значение</Label>
+                <Input value={form.value} onChange={e => setForm(prev => ({ ...prev, value: e.target.value }))} placeholder="если отличается" />
+              </div>
+              <div className="space-y-2">
+                <Label>Порядок</Label>
+                <Input type="number" value={form.sortOrder} onChange={e => setForm(prev => ({ ...prev, sortOrder: e.target.value }))} />
+              </div>
+              <Button className="bg-[#E4002B] hover:bg-[#BD0024]" disabled={saving} onClick={saveItem}>
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : form.itemId ? 'Сохранить' : 'Добавить'}
+              </Button>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Checkbox checked={form.isActive} onCheckedChange={checked => setForm(prev => ({ ...prev, isActive: Boolean(checked) }))} />
+            <span className="text-sm">Активный элемент</span>
+            {form.itemId && <Button variant="ghost" size="sm" onClick={resetForm}>Очистить форму</Button>}
+          </div>
+          <Input value={form.description} onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))} placeholder="Описание элемента справочника" />
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-sm border-0">
+        <CardHeader>
+          <CardTitle className="text-base">{selectedDictionary?.name || 'Справочник'}</CardTitle>
+          <CardDescription>Отключенные элементы не показываются пользователям в карточке, но остаются в системе для старых данных</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Название</TableHead>
+                  <TableHead>Значение</TableHead>
+                  <TableHead>Порядок</TableHead>
+                  <TableHead>Статус</TableHead>
+                  <TableHead className="text-right">Действия</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(selectedDictionary?.items || []).map(item => (
+                  <TableRow key={item.id} className="crm-table-row-accent">
+                    <TableCell className="font-medium">{item.label}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{item.value}</TableCell>
+                    <TableCell>{item.sortOrder}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className={item.isActive ? 'bg-green-50 text-green-700 border-green-300' : 'bg-gray-100 text-gray-500 border-gray-300'}>
+                        {item.isActive ? 'Активен' : 'Отключен'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => editItem(item)}><Edit className="h-3.5 w-3.5" /></Button>
+                        <Button variant="ghost" size="sm" className="h-8 px-2" disabled={saving} onClick={() => toggleItem(item)}>
+                          {item.isActive ? 'Отключить' : 'Включить'}
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {(selectedDictionary?.items || []).length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">В справочнике пока нет элементов</TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </div>
@@ -565,7 +798,7 @@ export function AdminCabinetView({
 
       {/* Tabs */}
       <Tabs value={adminTab} onValueChange={setAdminTab} className="space-y-4">
-        <TabsList className="flex w-full overflow-x-auto crm-scroll sm:grid sm:grid-cols-6 gap-1 p-1">
+        <TabsList className="flex w-full overflow-x-auto crm-scroll sm:grid sm:grid-cols-7 gap-1 p-1">
           <TabsTrigger value="pending" className="flex items-center gap-1.5 relative min-h-[44px]">
             <UserCheck className="h-4 w-4" />
             <span className="hidden sm:inline">Заявки</span>
@@ -576,6 +809,7 @@ export function AdminCabinetView({
           <TabsTrigger value="users" className="flex items-center gap-1.5 min-h-[44px]"><Users className="h-4 w-4" /><span className="hidden sm:inline">Пользователи</span></TabsTrigger>
           <TabsTrigger value="events" className="flex items-center gap-1.5 min-h-[44px]"><Calendar className="h-4 w-4" /><span className="hidden sm:inline">Мероприятия</span></TabsTrigger>
           <TabsTrigger value="finance" className="flex items-center gap-1.5 min-h-[44px]"><Banknote className="h-4 w-4" /><span className="hidden sm:inline">Финансы</span></TabsTrigger>
+          <TabsTrigger value="dictionaries" className="flex items-center gap-1.5 min-h-[44px]"><ClipboardList className="h-4 w-4" /><span className="hidden sm:inline">Справочники</span></TabsTrigger>
           <TabsTrigger value="audit" className="flex items-center gap-1.5 min-h-[44px]"><ClipboardList className="h-4 w-4" /><span className="hidden sm:inline">Аудит</span></TabsTrigger>
           <TabsTrigger value="settings" className="flex items-center gap-1.5 min-h-[44px]"><Settings className="h-4 w-4" /><span className="hidden sm:inline">Настройки</span></TabsTrigger>
         </TabsList>
@@ -972,6 +1206,11 @@ export function AdminCabinetView({
         {/* ====== FINANCIAL REPORT TAB ====== */}
         <TabsContent value="finance" className="space-y-4">
           <FinancialReportTab events={events} />
+        </TabsContent>
+
+        {/* ====== REFERENCE DICTIONARIES TAB ====== */}
+        <TabsContent value="dictionaries" className="space-y-4">
+          <ReferenceDictionariesTab />
         </TabsContent>
 
         {/* ====== AUDIT LOG TAB ====== */}

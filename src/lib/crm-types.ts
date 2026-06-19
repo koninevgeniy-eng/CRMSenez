@@ -345,6 +345,30 @@ export interface EventApproval {
   createdAt: string;
 }
 
+export interface ReferenceItem {
+  id: string;
+  dictionaryId: string;
+  value: string;
+  label: string;
+  description?: string;
+  sortOrder: number;
+  isActive: boolean;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReferenceDictionary {
+  id: string;
+  code: string;
+  name: string;
+  description?: string;
+  isSystem: boolean;
+  createdAt: string;
+  updatedAt: string;
+  items: ReferenceItem[];
+}
+
 export interface EventVersion {
   id: string;
   eventId: string;
