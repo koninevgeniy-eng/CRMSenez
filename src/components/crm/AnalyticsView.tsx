@@ -1,16 +1,19 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  FileSpreadsheet, Users, TrendingUp, Wallet,
+  FileSpreadsheet, RefreshCw, Users, TrendingUp, Wallet,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { EventData, EventStatus, STATUS_LABELS } from '@/lib/crm-types';
+import { DEPARTMENTS, EventData, EventStatus, STATUS_LABELS, UserData } from '@/lib/crm-types';
 import { getStatusLabel, getStatusColor, formatDate, formatCurrency, formatNumber } from '@/lib/crm-utils';
+import { apiFetch } from '@/lib/api-fetch';
 import { exportWorkbook } from '@/lib/excel-client';
 import { toast } from '@/hooks/use-toast';
 import {
@@ -20,16 +23,145 @@ import {
 
 const CHART_COLORS = ['#10b981', '#f59e0b', '#3b82f6', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
 const getStageLabel = (stage: string) => STATUS_LABELS[stage as EventStatus] || stage;
+const ALL_FILTER_VALUE = 'all';
+const DEPARTMENT_STATUS_FILTERS: Record<string, EventStatus[]> = {
+  methodology: ['draft', 'methodology_review', 'revision_requested', 'methodology_actual_budget_review', 'pending_approval', 'pending_actual_budget', 'rejected'],
+  coordination: ['coordination_budget_review', 'uin_assignment', 'coordination_actual_budget_review', 'budget_approved', 'uin_assigned', 'pending_actual_approval', 'actual_budget_approved'],
+  agd: ['agd_date_review', 'calendar_approved', 'approved'],
+  organization: ['organization_assignment', 'in_progress', 'event_finished'],
+  analytics: ['actual_budget_approved', 'archived', 'completed'],
+};
 
 interface AnalyticsViewProps {
   events: EventData[];
   analyticsData: any;
+  users?: UserData[];
 }
 
 export function AnalyticsView({
   events,
-  analyticsData,
+  analyticsData: initialAnalyticsData,
+  users = [],
 }: AnalyticsViewProps) {
+  const currentYear = new Date().getFullYear();
+  const [filters, setFilters] = useState({
+    year: ALL_FILTER_VALUE,
+    from: '',
+    to: '',
+    status: ALL_FILTER_VALUE,
+    department: ALL_FILTER_VALUE,
+    ownerId: ALL_FILTER_VALUE,
+  });
+  const [liveAnalyticsData, setLiveAnalyticsData] = useState<any>(initialAnalyticsData);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+
+  useEffect(() => {
+    setLiveAnalyticsData(initialAnalyticsData);
+  }, [initialAnalyticsData]);
+
+  const analyticsQuery = useMemo(() => {
+    const params = new URLSearchParams();
+    if (filters.year !== ALL_FILTER_VALUE) params.set('year', filters.year);
+    if (filters.from) params.set('from', filters.from);
+    if (filters.to) params.set('to', filters.to);
+    if (filters.status !== ALL_FILTER_VALUE) params.set('status', filters.status);
+    if (filters.department !== ALL_FILTER_VALUE) params.set('department', filters.department);
+    if (filters.ownerId !== ALL_FILTER_VALUE) params.set('ownerId', filters.ownerId);
+    const query = params.toString();
+    return query ? `?${query}` : '';
+  }, [filters]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setAnalyticsLoading(true);
+    apiFetch(`/api/analytics${analyticsQuery}`)
+      .then(res => res.ok ? res.json() : Promise.reject(new Error('analytics_failed')))
+      .then(data => {
+        if (!cancelled) setLiveAnalyticsData(data);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          toast({ title: 'Не удалось обновить аналитику', variant: 'destructive' });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setAnalyticsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [analyticsQuery]);
+
+  const analyticsData = liveAnalyticsData || initialAnalyticsData;
+  const availableYears = useMemo(() => {
+    const years = new Set<number>([currentYear]);
+    events.forEach(event => {
+      if (event.startDate) {
+        const year = new Date(event.startDate).getFullYear();
+        if (Number.isFinite(year)) years.add(year);
+      }
+    });
+    return Array.from(years).sort((a, b) => b - a);
+  }, [currentYear, events]);
+
+  const userById = useMemo(() => new Map(users.map(user => [user.id, user])), [users]);
+  const ownerOptions = useMemo(() => {
+    const ownerIds = new Set(events.map(event => event.ownerId).filter(Boolean) as string[]);
+    return Array.from(ownerIds).map(ownerId => ({
+      id: ownerId,
+      label: userById.get(ownerId)?.name || `ID ${ownerId.slice(0, 8)}`,
+    }));
+  }, [events, userById]);
+
+  const filteredEvents = useMemo(() => events.filter(event => {
+    if (filters.status !== ALL_FILTER_VALUE) {
+      if (event.status !== filters.status) return false;
+    } else if (filters.department !== ALL_FILTER_VALUE) {
+      const departmentStatuses = DEPARTMENT_STATUS_FILTERS[filters.department] || [];
+      if (departmentStatuses.length > 0 && !departmentStatuses.includes(event.status)) return false;
+    }
+    if (filters.ownerId !== ALL_FILTER_VALUE && event.ownerId !== filters.ownerId) return false;
+
+    if (filters.year !== ALL_FILTER_VALUE || filters.from || filters.to) {
+      if (!event.startDate) return false;
+      const startDate = new Date(event.startDate);
+      if (filters.year !== ALL_FILTER_VALUE && startDate.getFullYear() !== Number(filters.year)) return false;
+      if (filters.from) {
+        const fromDate = new Date(filters.from);
+        fromDate.setHours(0, 0, 0, 0);
+        if (startDate < fromDate) return false;
+      }
+      if (filters.to) {
+        const toDate = new Date(filters.to);
+        toDate.setHours(23, 59, 59, 999);
+        if (startDate > toDate) return false;
+      }
+    }
+    return true;
+  }), [events, filters]);
+
+  const activeFiltersCount = [
+    filters.year !== ALL_FILTER_VALUE,
+    Boolean(filters.from),
+    Boolean(filters.to),
+    filters.status !== ALL_FILTER_VALUE,
+    filters.department !== ALL_FILTER_VALUE,
+    filters.ownerId !== ALL_FILTER_VALUE,
+  ].filter(Boolean).length;
+
+  const updateFilter = (key: keyof typeof filters, value: string) => {
+    setFilters(prev => ({ ...prev, [key]: value }));
+  };
+
+  const resetFilters = () => {
+    setFilters({
+      year: ALL_FILTER_VALUE,
+      from: '',
+      to: '',
+      status: ALL_FILTER_VALUE,
+      department: ALL_FILTER_VALUE,
+      ownerId: ALL_FILTER_VALUE,
+    });
+  };
+
   if (!analyticsData) return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
@@ -109,7 +241,7 @@ export function AnalyticsView({
 
   const handleRosmolodezhReport = async () => {
     try {
-      const completedEvents = events.filter(e => e.status === 'completed' || e.status === 'actual_budget_approved' || e.uin);
+      const completedEvents = filteredEvents.filter(e => e.status === 'completed' || e.status === 'actual_budget_approved' || e.uin);
       const data = [
         ['ОТЧЁТ ДЛЯ РОСМОЛОДЁЖИ', '', '', '', '', '', '', ''],
         ['', '', '', '', '', '', '', ''],
@@ -146,12 +278,100 @@ export function AnalyticsView({
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Аналитика</h2>
-          <p className="text-muted-foreground text-sm mt-1">Анализ загрузки, NPS, стоимости спикеров, трат на мероприятия</p>
+          <p className="text-muted-foreground text-sm mt-1">Анализ мероприятий и нагрузки сотрудников с фильтрами по периоду и процессу</p>
         </div>
         <Button variant="outline" size="sm" className="gap-1.5" onClick={handleRosmolodezhReport}>
           <FileSpreadsheet className="h-3.5 w-3.5" /> Отчёт Росмолодёжи
         </Button>
       </div>
+
+      <Card className="shadow-sm border-0">
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <p className="text-sm font-semibold">Фильтры аналитики</p>
+              <p className="text-xs text-muted-foreground">
+                Сейчас в выборке: {formatNumber(filteredEvents.length)} мероприятий
+                {activeFiltersCount > 0 ? `, активных фильтров: ${activeFiltersCount}` : ''}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {analyticsLoading && (
+                <Badge variant="secondary" className="gap-1">
+                  <RefreshCw className="h-3 w-3 animate-spin" /> Обновление
+                </Badge>
+              )}
+              <Button variant="outline" size="sm" onClick={resetFilters} disabled={activeFiltersCount === 0}>
+                Сбросить
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+            <div className="space-y-1">
+              <p className="text-[11px] font-medium text-muted-foreground">Год</p>
+              <Select value={filters.year} onValueChange={(value) => updateFilter('year', value)}>
+                <SelectTrigger className="w-full"><SelectValue placeholder="Все годы" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_FILTER_VALUE}>Все годы</SelectItem>
+                  {availableYears.map(year => (
+                    <SelectItem key={year} value={String(year)}>{year}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-[11px] font-medium text-muted-foreground">Дата с</p>
+              <Input type="date" value={filters.from} onChange={(event) => updateFilter('from', event.target.value)} />
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-[11px] font-medium text-muted-foreground">Дата по</p>
+              <Input type="date" value={filters.to} onChange={(event) => updateFilter('to', event.target.value)} />
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-[11px] font-medium text-muted-foreground">Департамент</p>
+              <Select value={filters.department} onValueChange={(value) => updateFilter('department', value)}>
+                <SelectTrigger className="w-full"><SelectValue placeholder="Все департаменты" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_FILTER_VALUE}>Все департаменты</SelectItem>
+                  {DEPARTMENTS.filter(department => department.id !== 'dashboard').map(department => (
+                    <SelectItem key={department.id} value={department.id}>{department.shortName}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-[11px] font-medium text-muted-foreground">Статус</p>
+              <Select value={filters.status} onValueChange={(value) => updateFilter('status', value)}>
+                <SelectTrigger className="w-full"><SelectValue placeholder="Все статусы" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_FILTER_VALUE}>Все статусы</SelectItem>
+                  {Object.entries(STATUS_LABELS).map(([status, label]) => (
+                    <SelectItem key={status} value={status}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-[11px] font-medium text-muted-foreground">Владелец</p>
+              <Select value={filters.ownerId} onValueChange={(value) => updateFilter('ownerId', value)}>
+                <SelectTrigger className="w-full"><SelectValue placeholder="Все владельцы" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_FILTER_VALUE}>Все владельцы</SelectItem>
+                  {ownerOptions.map(owner => (
+                    <SelectItem key={owner.id} value={owner.id}>{owner.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <Tabs defaultValue="events" className="space-y-5">
         <TabsList className="grid w-full max-w-xl grid-cols-2">
@@ -344,7 +564,7 @@ export function AnalyticsView({
           {(() => {
             // Build monthly budget/actual data
             const monthMap: Record<string, { planned: number; actual: number }> = {};
-            events.forEach(e => {
+            filteredEvents.forEach(e => {
               if (e.startDate) {
                 const d = new Date(e.startDate);
                 const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -428,7 +648,7 @@ export function AnalyticsView({
           <Table>
             <TableHeader><TableRow><TableHead>Мероприятие</TableHead><TableHead>Статус</TableHead><TableHead>NPS</TableHead><TableHead>Бюджет</TableHead><TableHead>Факт</TableHead><TableHead>Отклонение</TableHead><TableHead>Эффективность</TableHead></TableRow></TableHeader>
             <TableBody>
-              {events.filter(e => e.status === 'completed' || e.status === 'actual_budget_approved').map(event => {
+              {filteredEvents.filter(e => e.status === 'completed' || e.status === 'actual_budget_approved').map(event => {
                 const deviation = event.budget && event.actualCost ? event.budget - event.actualCost : null;
                 const efficiency = event.budget && event.actualCost ? ((event.budget - event.actualCost) / event.budget * 100).toFixed(1) : null;
                 return (

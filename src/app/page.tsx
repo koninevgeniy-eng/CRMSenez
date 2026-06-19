@@ -398,7 +398,7 @@ export default function CRMPage() {
     fetchNotifications();
     if (activeDept === 'analytics' || activeDept === 'dashboard') fetchAnalytics();
     if (activeDept === 'cabinet') fetchPersonalData();
-    if (activeDept === 'organization' && (isManager || isAdmin)) fetchUsers();
+    if ((activeDept === 'organization' || activeDept === 'analytics') && (isManager || isAdmin)) fetchUsers();
     if (activeDept === 'admin') { fetchUsers(); fetchPendingUsers(); }
   }, [fetchEvents, fetchNotifications, fetchAnalytics, fetchPersonalData, fetchUsers, fetchPendingUsers, activeDept, isManager, isAdmin]);
 
@@ -1069,6 +1069,7 @@ export default function CRMPage() {
     <AnalyticsView
       events={events}
       analyticsData={analyticsData}
+      users={users}
     />
   );
 

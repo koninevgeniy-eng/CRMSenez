@@ -2,6 +2,51 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getAuthUser } from '@/lib/auth-helpers';
 
+const DEPARTMENT_STATUS_FILTERS: Record<string, string[]> = {
+  methodology: [
+    'draft',
+    'methodology_review',
+    'revision_requested',
+    'methodology_actual_budget_review',
+    'pending_approval',
+    'pending_actual_budget',
+    'rejected',
+  ],
+  coordination: [
+    'coordination_budget_review',
+    'uin_assignment',
+    'coordination_actual_budget_review',
+    'budget_approved',
+    'uin_assigned',
+    'pending_actual_approval',
+    'actual_budget_approved',
+  ],
+  agd: [
+    'agd_date_review',
+    'calendar_approved',
+    'approved',
+  ],
+  organization: [
+    'organization_assignment',
+    'in_progress',
+    'event_finished',
+  ],
+  analytics: [
+    'actual_budget_approved',
+    'archived',
+    'completed',
+  ],
+};
+
+function parseDateParam(value: string | null, endOfDay = false) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  if (endOfDay) date.setHours(23, 59, 59, 999);
+  else date.setHours(0, 0, 0, 0);
+  return date;
+}
+
 export async function GET(request: NextRequest) {
   try {
     // Auth check
@@ -12,13 +57,50 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams;
     const now = new Date();
-    const parsedYear = Number(searchParams.get('year') || now.getFullYear());
+    const yearFilter = searchParams.get('year');
+    const statusFilter = searchParams.get('status');
+    const departmentFilter = searchParams.get('department');
+    const ownerIdFilter = searchParams.get('ownerId');
+    const fromDate = parseDateParam(searchParams.get('from'));
+    const toDate = parseDateParam(searchParams.get('to'), true);
+    const parsedYear = Number(yearFilter && yearFilter !== 'all'
+      ? yearFilter
+      : fromDate?.getFullYear() || toDate?.getFullYear() || now.getFullYear());
     const year = Number.isFinite(parsedYear) ? parsedYear : now.getFullYear();
     const yearStart = new Date(year, 0, 1);
     const yearEnd = new Date(year, 11, 31, 23, 59, 59, 999);
     const periodEnd = year === now.getFullYear() ? now : yearEnd;
+    const analyticsPeriodStart = fromDate || yearStart;
+    const analyticsPeriodEnd = toDate || periodEnd;
+    const where: any = {};
+
+    if (statusFilter && statusFilter !== 'all') {
+      where.status = statusFilter;
+    } else if (departmentFilter && departmentFilter !== 'all' && DEPARTMENT_STATUS_FILTERS[departmentFilter]) {
+      where.status = { in: DEPARTMENT_STATUS_FILTERS[departmentFilter] };
+    }
+    if (ownerIdFilter && ownerIdFilter !== 'all') {
+      where.ownerId = ownerIdFilter;
+    }
+    if (yearFilter && yearFilter !== 'all') {
+      const selectedYear = Number(yearFilter);
+      if (Number.isFinite(selectedYear)) {
+        where.startDate = {
+          gte: new Date(selectedYear, 0, 1),
+          lte: new Date(selectedYear, 11, 31, 23, 59, 59, 999),
+        };
+      }
+    }
+    if (fromDate || toDate) {
+      where.startDate = {
+        ...(where.startDate || {}),
+        ...(fromDate ? { gte: fromDate } : {}),
+        ...(toDate ? { lte: toDate } : {}),
+      };
+    }
 
     const events = await db.event.findMany({
+      where,
       include: {
         speakers: true,
         budgetItems: true,
@@ -94,11 +176,12 @@ export async function GET(request: NextRequest) {
     });
     const ytdEvents = eventsInSelectedYear.filter(e => {
       if (!e.startDate) return false;
-      return new Date(e.startDate) <= periodEnd;
+      const startDate = new Date(e.startDate);
+      return startDate >= analyticsPeriodStart && startDate <= analyticsPeriodEnd;
     });
     const remainingYearEvents = eventsInSelectedYear.filter(e => {
       if (!e.startDate) return false;
-      return new Date(e.startDate) > periodEnd;
+      return new Date(e.startDate) > analyticsPeriodEnd;
     });
     const ytdParticipants = ytdEvents.reduce((sum, e) => sum + getParticipants(e), 0);
     const remainingYearParticipants = remainingYearEvents.reduce((sum, e) => sum + getParticipants(e), 0);
@@ -412,6 +495,14 @@ export async function GET(request: NextRequest) {
     });
 
     return NextResponse.json({
+      appliedFilters: {
+        year: yearFilter || 'all',
+        from: fromDate ? fromDate.toISOString() : null,
+        to: toDate ? toDate.toISOString() : null,
+        status: statusFilter || 'all',
+        department: departmentFilter || 'all',
+        ownerId: ownerIdFilter || 'all',
+      },
       totalEvents,
       completedEvents,
       inProgressEvents,
@@ -434,8 +525,8 @@ export async function GET(request: NextRequest) {
       budgetByFunding,
       participantAnalytics: {
         year,
-        periodStart: yearStart.toISOString(),
-        periodEnd: periodEnd.toISOString(),
+        periodStart: analyticsPeriodStart.toISOString(),
+        periodEnd: analyticsPeriodEnd.toISOString(),
         yearEnd: yearEnd.toISOString(),
         ytdParticipants,
         remainingYearParticipants,
