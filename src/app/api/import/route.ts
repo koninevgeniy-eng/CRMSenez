@@ -3,6 +3,10 @@ import { db } from '@/lib/db';
 import { getAdminUser } from '@/lib/auth-helpers';
 import ExcelJS from 'exceljs';
 import { validateCsrf, csrfErrorResponse } from '@/lib/csrf';
+import {
+  buildEventVersionSnapshot,
+  EVENT_VERSION_SNAPSHOT_INCLUDE,
+} from '@/lib/event-versioning';
 
 function getCellValue(cell: ExcelJS.Cell): any {
   const value = cell.value;
@@ -234,6 +238,26 @@ export async function POST(request: NextRequest) {
                   } catch { /* unique constraint */ }
                 }
               }
+            }
+
+            const versionEvent = await tx.event.findUnique({
+              where: { id: event.id },
+              include: EVENT_VERSION_SNAPSHOT_INCLUDE as any,
+            });
+            if (versionEvent) {
+              await tx.eventVersion.create({
+                data: {
+                  eventId: event.id,
+                  version: 1,
+                  status: event.status,
+                  reason: 'Импорт из Excel',
+                  source: 'import',
+                  snapshot: buildEventVersionSnapshot(versionEvent as unknown as Record<string, unknown>),
+                  createdBy: 'Импорт',
+                  role: 'system',
+                  department: 'system',
+                },
+              });
             }
 
             results.push({ id: event.id, title: event.title, number: event.number, status: event.status });

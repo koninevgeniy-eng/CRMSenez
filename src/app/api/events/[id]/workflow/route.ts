@@ -3,6 +3,10 @@ import { db } from '@/lib/db';
 import { getAuthUser } from '@/lib/auth-helpers';
 import { validateCsrf, csrfErrorResponse } from '@/lib/csrf';
 import { CALENDAR_EVENT_STATUSES, dateRangesOverlap } from '@/lib/calendar-policy';
+import {
+  buildEventVersionSnapshot,
+  EVENT_VERSION_SNAPSHOT_INCLUDE,
+} from '@/lib/event-versioning';
 
 type WorkflowAction =
   | 'submit_for_approval'
@@ -560,6 +564,41 @@ export async function POST(
             stage,
             version: event.currentVersion,
             comment: comment || null,
+          },
+        });
+      }
+
+      const versionEvent = await tx.event.findUnique({
+        where: { id },
+        include: EVENT_VERSION_SNAPSHOT_INCLUDE as any,
+      });
+      if (versionEvent) {
+        await tx.eventVersion.upsert({
+          where: {
+            eventId_version: {
+              eventId: id,
+              version: event.currentVersion,
+            },
+          },
+          update: {
+            status: versionEvent.status,
+            reason: notificationMsg || decision,
+            source: 'workflow',
+            snapshot: buildEventVersionSnapshot(versionEvent as unknown as Record<string, unknown>),
+            createdBy: authUser.name,
+            role: authUser.role,
+            department: authUser.department,
+          },
+          create: {
+            eventId: id,
+            version: event.currentVersion,
+            status: versionEvent.status,
+            reason: notificationMsg || decision,
+            source: 'workflow',
+            snapshot: buildEventVersionSnapshot(versionEvent as unknown as Record<string, unknown>),
+            createdBy: authUser.name,
+            role: authUser.role,
+            department: authUser.department,
           },
         });
       }

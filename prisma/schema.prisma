@@ -121,6 +121,7 @@ model Event {
   payments        Payment[]
   assignments     EventAssignment[]
   approvals       EventApproval[]
+  versions        EventVersion[]
 }
 
 model Speaker {
@@ -334,6 +335,26 @@ model EventApproval {
 
   @@index([eventId, createdAt])
   @@index([stage, decision])
+}
+
+model EventVersion {
+  id         String   @id @default(cuid())
+  eventId    String
+  version    Int
+  status     String
+  reason     String?
+  source     String
+  snapshot   String
+  createdBy  String?
+  role       String?
+  department String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, version])
+  @@index([eventId, createdAt])
 }
 
 model AuditLog {

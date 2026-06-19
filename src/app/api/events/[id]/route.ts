@@ -9,6 +9,13 @@ import {
   pickEventScalarData,
 } from '@/lib/event-policy';
 import { hasPlannedBudgetChange, normalizeBudgetItems, validateBudgetItems } from '@/lib/budget-policy';
+import {
+  buildEventVersionSnapshot,
+  canCreateVersionFromEdit,
+  EVENT_VERSION_SNAPSHOT_INCLUDE,
+  hasVersionedScalarChange,
+  requiresNewVersion,
+} from '@/lib/event-versioning';
 
 function isValidDate(d: any): boolean {
   if (!d) return true;
@@ -43,6 +50,7 @@ const eventInclude = {
   notifications: { orderBy: { createdAt: 'desc' } },
   changeLogs: { orderBy: { createdAt: 'desc' } },
   approvals: { orderBy: { createdAt: 'desc' } },
+  versions: { orderBy: { version: 'desc' } },
   assignments: {
     include: {
       user: {
@@ -221,7 +229,7 @@ export async function PUT(
 
     // Get current event for change log
     const currentEvent = existingEvent;
-    const updateData = pickEventScalarData(eventData, authUser);
+    const updateData = pickEventScalarData(eventData, authUser, existingEvent);
 
     const requestedScalarFields = Object.keys(eventData);
     const rejectedScalarFields = requestedScalarFields.filter(field =>
@@ -247,7 +255,7 @@ export async function PUT(
       payments,
     };
     for (const [relation, value] of Object.entries(requestedRelations)) {
-      if (value !== undefined && (relation === 'tasks' || !canUseEventRelation(authUser, relation))) {
+      if (value !== undefined && (relation === 'tasks' || !canUseEventRelation(authUser, relation, existingEvent))) {
         return NextResponse.json(
           { error: relation === 'tasks'
             ? 'Используйте API задач для изменения задач'
@@ -261,8 +269,23 @@ export async function PUT(
     const changeLogs: any[] = [];
     const plannedBudgetChanged = normalizedBudgetItems !== undefined
       && hasPlannedBudgetChange(existingEvent.budgetItems, budgetItems);
+    const hasCoreCardChange = hasVersionedScalarChange(existingEvent as unknown as Record<string, unknown>, updateData)
+      || speakers !== undefined
+      || plannedBudgetChanged;
+    const needsVersionReapproval = hasCoreCardChange && requiresNewVersion(existingEvent.status);
+    if (needsVersionReapproval && !canCreateVersionFromEdit(authUser, existingEvent)) {
+      return NextResponse.json(
+        { error: 'Изменить уже согласованную карточку может создатель из методологии, руководитель методологии или администратор' },
+        { status: 403 }
+      );
+    }
+
+    const nextVersion = needsVersionReapproval
+      ? existingEvent.currentVersion + 1
+      : existingEvent.currentVersion;
     const needsBudgetReapproval = plannedBudgetChanged
       && existingEvent.budgetApproved
+      && !needsVersionReapproval
       && ![
         'draft',
         'methodology_review',
@@ -273,6 +296,15 @@ export async function PUT(
         'archived',
         'completed',
       ].includes(existingEvent.status);
+
+    if (needsVersionReapproval) {
+      updateData.currentVersion = nextVersion;
+      updateData.status = 'methodology_review';
+      updateData.budgetApproved = false;
+      updateData.budgetApprovedBy = null;
+      updateData.budgetApprovedAt = null;
+      updateData.calendarAdded = false;
+    }
 
     if (needsBudgetReapproval) {
       updateData.status = 'coordination_budget_review';
@@ -287,7 +319,7 @@ export async function PUT(
       role: authUser.role,
       department: authUser.department,
       stage: existingEvent.status,
-      version: existingEvent.currentVersion,
+      version: nextVersion,
       comment: changeDescription || null,
     };
 
@@ -328,6 +360,34 @@ export async function PUT(
           comment: changeDescription || 'Плановый бюджет изменен после согласования. Требуется повторное согласование бюджета.',
         });
       }
+      if (needsVersionReapproval) {
+        changeLogs.push({
+          eventId: id,
+          field: 'versionReapproval',
+          oldValue: `v${existingEvent.currentVersion}`,
+          newValue: `v${nextVersion}`,
+          ...changeLogContext,
+          comment: changeDescription || 'Изменена уже согласованная карточка. Создана новая версия и направлена на согласование методологии.',
+        });
+      }
+      if (speakers !== undefined) {
+        changeLogs.push({
+          eventId: id,
+          field: 'speakers',
+          oldValue: 'Предыдущий список',
+          newValue: 'Обновленный список',
+          ...changeLogContext,
+        });
+      }
+      if (plannedBudgetChanged) {
+        changeLogs.push({
+          eventId: id,
+          field: 'budgetItems',
+          oldValue: 'Предыдущий плановый бюджет',
+          newValue: 'Обновленный плановый бюджет',
+          ...changeLogContext,
+        });
+      }
     }
 
     // Perform all updates inside a transaction for data integrity
@@ -343,14 +403,17 @@ export async function PUT(
         await tx.changeLog.createMany({ data: changeLogs });
 
         // Create notifications for all departments about changes
-        const changeMsg = changeDescription || `Мероприятие "${event.title}" было изменено`;
+        const changeMsg = needsVersionReapproval
+          ? `Создана новая версия v${nextVersion} мероприятия "${event.title}" и направлена на повторное согласование методологии`
+          : changeDescription || `Мероприятие "${event.title}" было изменено`;
+        const changeType = needsVersionReapproval ? 'warning' : 'change';
         await tx.notification.createMany({
           data: [
-            { eventId: id, department: 'АГД', message: changeMsg, type: 'change' },
-            { eventId: id, department: 'Координация', message: changeMsg, type: 'change' },
-            { eventId: id, department: 'Организация', message: changeMsg, type: 'change' },
-            { eventId: id, department: 'Аналитика', message: changeMsg, type: 'change' },
-            { eventId: id, department: 'Методология', message: changeMsg, type: 'change' },
+            { eventId: id, department: 'АГД', message: changeMsg, type: changeType },
+            { eventId: id, department: 'Координация', message: changeMsg, type: changeType },
+            { eventId: id, department: 'Организация', message: changeMsg, type: changeType },
+            { eventId: id, department: 'Аналитика', message: changeMsg, type: changeType },
+            { eventId: id, department: 'Методология', message: changeMsg, type: changeType },
           ],
         });
       }
@@ -505,6 +568,48 @@ export async function PUT(
               invoiceNumber: p.invoiceNumber || null,
               notes: p.notes || null,
             })),
+          });
+        }
+      }
+
+      const shouldSnapshotVersion = changeLogs.length > 0
+        || Object.values(requestedRelations).some(value => value !== undefined);
+      if (shouldSnapshotVersion) {
+        const versionEvent = await tx.event.findUnique({
+          where: { id },
+          include: EVENT_VERSION_SNAPSHOT_INCLUDE as any,
+        });
+        if (versionEvent) {
+          const reason = needsVersionReapproval
+            ? changeDescription || 'Изменение согласованной карточки'
+            : changeDescription || 'Редактирование карточки';
+          await tx.eventVersion.upsert({
+            where: {
+              eventId_version: {
+                eventId: id,
+                version: nextVersion,
+              },
+            },
+            update: {
+              status: versionEvent.status,
+              reason,
+              source: needsVersionReapproval ? 'post_approval_edit' : 'edit',
+              snapshot: buildEventVersionSnapshot(versionEvent as unknown as Record<string, unknown>),
+              createdBy: authUser.name,
+              role: authUser.role,
+              department: authUser.department,
+            },
+            create: {
+              eventId: id,
+              version: nextVersion,
+              status: versionEvent.status,
+              reason,
+              source: needsVersionReapproval ? 'post_approval_edit' : 'edit',
+              snapshot: buildEventVersionSnapshot(versionEvent as unknown as Record<string, unknown>),
+              createdBy: authUser.name,
+              role: authUser.role,
+              department: authUser.department,
+            },
           });
         }
       }

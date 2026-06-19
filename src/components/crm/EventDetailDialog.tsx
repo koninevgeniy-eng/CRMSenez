@@ -98,9 +98,18 @@ const APPROVAL_DECISION_LABELS: Record<string, string> = {
   cancelled: 'Отменено',
 };
 
+const VERSION_SOURCE_LABELS: Record<string, string> = {
+  created: 'Создание',
+  import: 'Импорт',
+  edit: 'Редактирование',
+  post_approval_edit: 'Новая версия после согласования',
+  workflow: 'Согласование',
+};
+
 const getRoleLabel = (role?: string) => role ? (ROLE_LABELS[role] || role) : '';
 const getDepartmentLabel = (department?: string) => department ? (DEPARTMENT_LABELS[department] || department) : '';
 const getDecisionLabel = (decision: string) => APPROVAL_DECISION_LABELS[decision] || decision;
+const getVersionSourceLabel = (source: string) => VERSION_SOURCE_LABELS[source] || source;
 const getStageLabel = (stage?: string) => stage ? getStatusLabel(stage as EventStatus) : '';
 const formatHistoryDate = (date: string) => new Date(date).toLocaleString('ru-RU', {
   day: 'numeric',
@@ -198,9 +207,10 @@ function EventDetailDialog({ event, open, onClose, onUpdate, onDelete, onWorkflo
     return comment.trim();
   };
 
+  const versions = event.versions || [];
   const approvals = event.approvals || [];
   const changeLogs = event.changeLogs || [];
-  const hasHistory = approvals.length > 0 || changeLogs.length > 0;
+  const hasHistory = versions.length > 0 || approvals.length > 0 || changeLogs.length > 0;
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -210,6 +220,7 @@ function EventDetailDialog({ event, open, onClose, onUpdate, onDelete, onWorkflo
             <DialogTitle className="text-sm sm:text-xl flex items-center gap-2 truncate min-w-0">{event.title}</DialogTitle>
             <div className="flex items-center gap-2">
               <Badge className={`crm-badge text-sm px-3 py-1 ${getStatusColor(event.status)}`}>{getStatusLabel(event.status)}</Badge>
+              <Badge variant="outline" className="crm-badge text-xs bg-white">v{event.currentVersion}</Badge>
               {event.uin && <Badge variant="secondary" className="font-mono text-xs">{event.uin}</Badge>}
               {!editing && canEdit ? (
                 <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setEditing(true)}><Edit className="h-3 w-3" />Ред.</Button>
@@ -412,6 +423,38 @@ function EventDetailDialog({ event, open, onClose, onUpdate, onDelete, onWorkflo
                   </div>
                 ) : (
                   <>
+                    {versions.length > 0 && (
+                      <section className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Hash className="h-4 w-4 text-[#E4002B]" />
+                          <h3 className="font-medium text-sm">Версии карточки</h3>
+                        </div>
+                        {versions.map((version) => (
+                          <div key={version.id} className="flex items-start gap-3 p-3 rounded-xl border bg-white hover:shadow-sm transition-shadow">
+                            <div className="p-1.5 rounded-lg shrink-0 bg-[#FFF1F3]">
+                              <Hash className="h-4 w-4 text-[#E4002B]" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-medium text-sm">Версия v{version.version}</span>
+                                <Badge variant="outline" className="crm-badge text-[10px] bg-white">{getVersionSourceLabel(version.source)}</Badge>
+                                <Badge variant="outline" className={`crm-badge text-[10px] ${getStatusColor(version.status as EventStatus)}`}>{getStatusLabel(version.status as EventStatus)}</Badge>
+                              </div>
+                              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                                {version.createdBy && <Badge variant="outline" className="crm-badge text-[10px] bg-white">{version.createdBy}</Badge>}
+                                {version.role && <Badge variant="outline" className="crm-badge text-[10px] bg-white">{getRoleLabel(version.role)}</Badge>}
+                                {version.department && <Badge variant="outline" className="crm-badge text-[10px] bg-white">{getDepartmentLabel(version.department)}</Badge>}
+                              </div>
+                              {version.reason && (
+                                <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">{version.reason}</p>
+                              )}
+                              <p className="text-xs text-muted-foreground mt-1.5">{formatHistoryDate(version.createdAt)}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </section>
+                    )}
+
                     {approvals.length > 0 && (
                       <section className="space-y-3">
                         <div className="flex items-center gap-2">

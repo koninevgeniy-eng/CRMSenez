@@ -9,6 +9,9 @@ import {
   pickCreateEventScalarData,
 } from '@/lib/event-policy';
 import { normalizeBudgetItems, validateBudgetItems } from '@/lib/budget-policy';
+import {
+  buildEventVersionSnapshot,
+} from '@/lib/event-versioning';
 import { CALENDAR_EVENT_STATUSES } from '@/lib/calendar-policy';
 
 function isValidDate(d: any): boolean {
@@ -118,6 +121,7 @@ export async function GET(request: NextRequest) {
       notifications: { orderBy: { createdAt: 'desc' }, take: 5 },
       changeLogs: { orderBy: { createdAt: 'desc' }, take: 10 },
       approvals: { orderBy: { createdAt: 'desc' }, take: 20 },
+      versions: { orderBy: { version: 'desc' }, take: 5 },
       payments: { orderBy: { createdAt: 'desc' } },
       assignments: {
         include: {
@@ -407,6 +411,7 @@ export async function POST(request: NextRequest) {
         notifications: true,
         changeLogs: true,
         approvals: true,
+        versions: true,
         payments: true,
         assignments: {
           include: {
@@ -425,7 +430,21 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json(event, { status: 201 });
+    const initialVersion = await db.eventVersion.create({
+      data: {
+        eventId: event.id,
+        version: 1,
+        status: event.status,
+        reason: 'Создание карточки мероприятия',
+        source: 'created',
+        snapshot: buildEventVersionSnapshot(event as unknown as Record<string, unknown>),
+        createdBy: authUser.name,
+        role: authUser.role,
+        department: authUser.department,
+      },
+    });
+
+    return NextResponse.json({ ...event, versions: [initialVersion] }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating event:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });

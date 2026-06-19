@@ -345,6 +345,21 @@ export interface EventApproval {
   createdAt: string;
 }
 
+export interface EventVersion {
+  id: string;
+  eventId: string;
+  version: number;
+  status: EventStatus;
+  reason?: string;
+  source: string;
+  snapshot: string;
+  createdBy?: string;
+  role?: string;
+  department?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // Workflow stages for progress indicator
 export const WORKFLOW_STAGES: { key: EventStatus; label: string }[] = [
   { key: 'draft', label: 'Черновик' },
@@ -451,6 +466,7 @@ export interface EventData {
   notifications: Notification[];
   changeLogs: ChangeLog[];
   approvals?: EventApproval[];
+  versions?: EventVersion[];
   payments: Payment[];
   assignments: EventAssignment[];
 }

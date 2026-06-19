@@ -200,8 +200,14 @@ const DEPARTMENT_RELATIONS: Record<string, Set<string>> = {
 };
 
 export interface EventPolicyUser {
+  id?: string;
   role: string;
   department: string | null;
+}
+
+export interface EventPolicyEvent {
+  ownerId?: string | null;
+  status?: string | null;
 }
 
 export function canCreateEvent(user: EventPolicyUser): boolean {
@@ -213,15 +219,47 @@ export function canDeleteEvent(user: EventPolicyUser): boolean {
   return user.role === 'admin';
 }
 
-export function canUseEventField(user: EventPolicyUser, field: EventScalarField): boolean {
+function canUseMethodologyOwnerField(
+  user: EventPolicyUser,
+  event: EventPolicyEvent | undefined,
+  field: EventScalarField,
+): boolean {
+  return Boolean(
+    event
+    && user.id
+    && user.department === 'methodology'
+    && event.ownerId === user.id
+    && DEPARTMENT_FIELDS.methodology?.has(field)
+  );
+}
+
+export function canUseEventField(
+  user: EventPolicyUser,
+  field: EventScalarField,
+  event?: EventPolicyEvent,
+): boolean {
   if (user.role === 'admin') return true;
+  if (canUseMethodologyOwnerField(user, event, field)) return true;
   if (user.role !== 'manager' || !user.department) return false;
   if (WORKFLOW_ONLY_FIELDS.has(field)) return false;
   return DEPARTMENT_FIELDS[user.department]?.has(field) ?? false;
 }
 
-export function canUseEventRelation(user: EventPolicyUser, relation: string): boolean {
+export function canUseEventRelation(
+  user: EventPolicyUser,
+  relation: string,
+  event?: EventPolicyEvent,
+): boolean {
   if (user.role === 'admin') return true;
+  if (
+    event
+    && user.id
+    && user.department === 'methodology'
+    && event.ownerId === user.id
+    && DEPARTMENT_RELATIONS.methodology?.has(relation)
+  ) {
+    return true;
+  }
   if (user.role !== 'manager' || !user.department) return false;
   return DEPARTMENT_RELATIONS[user.department]?.has(relation) ?? false;
 }
@@ -229,11 +267,12 @@ export function canUseEventRelation(user: EventPolicyUser, relation: string): bo
 export function pickEventScalarData(
   input: Record<string, unknown>,
   user: EventPolicyUser,
+  event?: EventPolicyEvent,
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
 
   for (const field of EVENT_SCALAR_FIELDS) {
-    if (input[field] === undefined || !canUseEventField(user, field)) continue;
+    if (input[field] === undefined || !canUseEventField(user, field, event)) continue;
     const value = input[field];
     result[field] = DATE_FIELDS.has(field)
       ? (value ? new Date(String(value)) : null)
