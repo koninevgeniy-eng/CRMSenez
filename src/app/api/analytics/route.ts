@@ -11,7 +11,12 @@ export async function GET(request: NextRequest) {
     }
 
     const searchParams = request.nextUrl.searchParams;
-    const year = searchParams.get('year') || new Date().getFullYear().toString();
+    const now = new Date();
+    const parsedYear = Number(searchParams.get('year') || now.getFullYear());
+    const year = Number.isFinite(parsedYear) ? parsedYear : now.getFullYear();
+    const yearStart = new Date(year, 0, 1);
+    const yearEnd = new Date(year, 11, 31, 23, 59, 59, 999);
+    const periodEnd = year === now.getFullYear() ? now : yearEnd;
 
     const events = await db.event.findMany({
       include: {
@@ -62,6 +67,31 @@ export async function GET(request: NextRequest) {
       });
     });
 
+    // Year-to-date participant and spend analytics
+    const getParticipants = (event: any) => Math.max(0, event.participantCount || event.totalParticipants || 0);
+    const getActualSpend = (event: any) => {
+      const budgetItemsActual = event.budgetItems.reduce((sum: number, item: any) => sum + (item.actualAmount || 0), 0);
+      return event.actualCost || budgetItemsActual;
+    };
+    const eventsInSelectedYear = events.filter(e => {
+      if (!e.startDate) return false;
+      const startDate = new Date(e.startDate);
+      return startDate >= yearStart && startDate <= yearEnd;
+    });
+    const ytdEvents = eventsInSelectedYear.filter(e => {
+      if (!e.startDate) return false;
+      return new Date(e.startDate) <= periodEnd;
+    });
+    const remainingYearEvents = eventsInSelectedYear.filter(e => {
+      if (!e.startDate) return false;
+      return new Date(e.startDate) > periodEnd;
+    });
+    const ytdParticipants = ytdEvents.reduce((sum, e) => sum + getParticipants(e), 0);
+    const remainingYearParticipants = remainingYearEvents.reduce((sum, e) => sum + getParticipants(e), 0);
+    const forecastYearParticipants = ytdParticipants + remainingYearParticipants;
+    const ytdActualSpend = ytdEvents.reduce((sum, e) => sum + getActualSpend(e), 0);
+    const averageSpendPerParticipant = ytdParticipants > 0 ? ytdActualSpend / ytdParticipants : 0;
+
     // Speaker analysis
     const allSpeakers = events.flatMap(e => e.speakers);
     const totalSpeakerCost = allSpeakers.reduce((sum, s) => sum + (s.cost || 0), 0);
@@ -106,6 +136,26 @@ export async function GET(request: NextRequest) {
       if (e.fundingSource) {
         budgetByFunding[e.fundingSource] = (budgetByFunding[e.fundingSource] || 0) + (e.budget || 0);
       }
+    });
+
+    // Normalized dictionary-driven breakdowns
+    const eventsByProgramType: Record<string, { count: number; participants: number; budget: number }> = {};
+    const eventsByVenue: Record<string, { count: number; participants: number }> = {};
+    const eventsByCampus: Record<string, { count: number; participants: number }> = {};
+    events.forEach(e => {
+      const programType = e.programType || 'Не указан';
+      const venue = e.venue || 'Не указана';
+      const campus = e.campus || 'Не указан';
+      if (!eventsByProgramType[programType]) eventsByProgramType[programType] = { count: 0, participants: 0, budget: 0 };
+      if (!eventsByVenue[venue]) eventsByVenue[venue] = { count: 0, participants: 0 };
+      if (!eventsByCampus[campus]) eventsByCampus[campus] = { count: 0, participants: 0 };
+      eventsByProgramType[programType].count++;
+      eventsByProgramType[programType].participants += getParticipants(e);
+      eventsByProgramType[programType].budget += e.budget || 0;
+      eventsByVenue[venue].count++;
+      eventsByVenue[venue].participants += getParticipants(e);
+      eventsByCampus[campus].count++;
+      eventsByCampus[campus].participants += getParticipants(e);
     });
 
     // Payment analytics
@@ -160,6 +210,22 @@ export async function GET(request: NextRequest) {
       eventsByStatus,
       eventsByMonth,
       budgetByFunding,
+      participantAnalytics: {
+        year,
+        periodStart: yearStart.toISOString(),
+        periodEnd: periodEnd.toISOString(),
+        yearEnd: yearEnd.toISOString(),
+        ytdParticipants,
+        remainingYearParticipants,
+        forecastYearParticipants,
+        ytdActualSpend,
+        averageSpendPerParticipant,
+        ytdEventsCount: ytdEvents.length,
+        yearEventsCount: eventsInSelectedYear.length,
+      },
+      eventsByProgramType,
+      eventsByVenue,
+      eventsByCampus,
       // Payment analytics
       paymentAnalytics: {
         totalPendingPayments,

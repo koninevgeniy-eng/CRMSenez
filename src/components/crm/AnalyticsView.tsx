@@ -2,14 +2,14 @@
 
 import React from 'react';
 import {
-  FileSpreadsheet, Calendar,
+  FileSpreadsheet, Users, TrendingUp, Wallet,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { EventData, EventStatus, STATUS_LABELS } from '@/lib/crm-types';
-import { getStatusLabel, getStatusColor, formatDate, formatCurrency } from '@/lib/crm-utils';
+import { getStatusLabel, getStatusColor, formatDate, formatCurrency, formatNumber } from '@/lib/crm-utils';
 import { exportWorkbook } from '@/lib/excel-client';
 import { toast } from '@/hooks/use-toast';
 import {
@@ -74,6 +74,7 @@ export function AnalyticsView({
   const budgetEfficiency = analyticsData.totalBudget > 0
     ? ((analyticsData.totalBudget - (analyticsData.totalActualCost || 0)) / analyticsData.totalBudget * 100).toFixed(1)
     : '—';
+  const participantAnalytics = analyticsData.participantAnalytics || {};
 
   const handleRosmolodezhReport = async () => {
     try {
@@ -132,6 +133,46 @@ export function AnalyticsView({
           <p className={`text-3xl font-bold crm-stat-number crm-count-up ${budgetEfficiency !== '—' && parseFloat(budgetEfficiency) >= 0 ? 'text-[#E4002B]' : 'text-red-600'}`}>{budgetEfficiency !== '—' ? `${budgetEfficiency}%` : '—'}</p>
           <p className="text-[10px] text-muted-foreground mt-0.5">Средний NPS: {analyticsData.avgNps ? analyticsData.avgNps.toFixed(1) : '—'}</p>
         </CardContent></Card>
+      </div>
+
+      {/* Participants Metrics */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+        <Card className="shadow-sm border-0 crm-gradient-card">
+          <CardContent className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs text-muted-foreground font-medium">Участников с начала года</p>
+                <p className="text-2xl sm:text-3xl font-bold crm-stat-number text-gray-800">{formatNumber(participantAnalytics.ytdParticipants || 0)}</p>
+                <p className="text-[10px] text-muted-foreground mt-1">С 1 января по {participantAnalytics.periodEnd ? formatDate(participantAnalytics.periodEnd) : 'сегодня'}</p>
+              </div>
+              <div className="p-2 rounded-xl bg-[#FFF1F3] text-[#E4002B]"><Users className="h-5 w-5" /></div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="shadow-sm border-0 crm-gradient-card">
+          <CardContent className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs text-muted-foreground font-medium">Прогноз участников на год</p>
+                <p className="text-2xl sm:text-3xl font-bold crm-stat-number text-[#E4002B]">{formatNumber(participantAnalytics.forecastYearParticipants || 0)}</p>
+                <p className="text-[10px] text-muted-foreground mt-1">По {participantAnalytics.yearEventsCount || 0} мероприятиям до 31 декабря</p>
+              </div>
+              <div className="p-2 rounded-xl bg-emerald-50 text-emerald-700"><TrendingUp className="h-5 w-5" /></div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="shadow-sm border-0 crm-gradient-card">
+          <CardContent className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs text-muted-foreground font-medium">Средняя трата на участника</p>
+                <p className="text-xl sm:text-2xl font-bold crm-stat-number text-amber-700">{formatCurrency(participantAnalytics.averageSpendPerParticipant || 0)}</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Факт. траты: {formatCurrency(participantAnalytics.ytdActualSpend || 0)}</p>
+              </div>
+              <div className="p-2 rounded-xl bg-amber-50 text-amber-700"><Wallet className="h-5 w-5" /></div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Charts */}
