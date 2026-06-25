@@ -13,6 +13,7 @@ import {
   buildEventVersionSnapshot,
 } from '@/lib/event-versioning';
 import { CALENDAR_EVENT_STATUSES } from '@/lib/calendar-policy';
+import { normalizeCustomFieldValues } from '@/lib/custom-fields';
 
 function isValidDate(d: any): boolean {
   if (!d) return true; // null/undefined is acceptable (optional field)
@@ -112,7 +113,17 @@ export async function GET(request: NextRequest) {
     const includeConfig = {
       speakers: true,
       budgetItems: true,
-      tasks: true,
+      tasks: {
+        include: {
+          assignments: {
+            include: {
+              user: {
+                select: { id: true, name: true, email: true, role: true, department: true },
+              },
+            },
+          },
+        },
+      },
       contacts: true,
       rooms: true,
       meals: true,
@@ -122,6 +133,10 @@ export async function GET(request: NextRequest) {
       changeLogs: { orderBy: { createdAt: 'desc' }, take: 10 },
       approvals: { orderBy: { createdAt: 'desc' }, take: 20 },
       versions: { orderBy: { version: 'desc' }, take: 5 },
+      customFieldValues: {
+        include: { field: true },
+        orderBy: { createdAt: 'asc' },
+      },
       payments: { orderBy: { createdAt: 'desc' } },
       assignments: {
         include: {
@@ -202,6 +217,7 @@ export async function POST(request: NextRequest) {
       transfers = [],
       accommodations = [],
       payments = [],
+      customFieldValues = {},
       ...eventData
     } = body;
 
@@ -276,6 +292,18 @@ export async function POST(request: NextRequest) {
     }
 
     const createData = pickCreateEventScalarData(eventData);
+    const customFieldDefinitions = await db.customFieldDefinition.findMany({
+      where: { entityType: 'event', isActive: true },
+      orderBy: [{ sortOrder: 'asc' }, { label: 'asc' }],
+    });
+    const customFieldValidation = normalizeCustomFieldValues(customFieldDefinitions, customFieldValues, { requireRequired: true });
+    if (!customFieldValidation.ok) {
+      return NextResponse.json(
+        { error: customFieldValidation.error },
+        { status: 400 }
+      );
+    }
+
     const event = await db.event.create({
       data: {
         ...createData,
@@ -381,6 +409,15 @@ export async function POST(request: NextRequest) {
             notes: p.notes || null,
           })),
         },
+        customFieldValues: {
+          create: customFieldValidation.values.map(value => ({
+            fieldId: value.fieldId,
+            value: value.value,
+            valueNumber: value.valueNumber,
+            valueDate: value.valueDate,
+            valueBoolean: value.valueBoolean,
+          })),
+        },
         notifications: {
           create: [
             { department: 'Методология', message: `Создан черновик мероприятия: ${eventData.title}`, type: 'info' },
@@ -412,6 +449,10 @@ export async function POST(request: NextRequest) {
         changeLogs: true,
         approvals: true,
         versions: true,
+        customFieldValues: {
+          include: { field: true },
+          orderBy: { createdAt: 'asc' },
+        },
         payments: true,
         assignments: {
           include: {

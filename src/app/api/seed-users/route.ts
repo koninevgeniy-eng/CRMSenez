@@ -10,13 +10,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Not available in production' }, { status: 404 });
     }
 
-    // Admin auth check
-    const adminUser = await getAdminUser(request);
-    if (!adminUser) {
-      return NextResponse.json({ error: 'Требуется авторизация администратора' }, { status: 403 });
-    }
     const existing = await db.user.count()
     if (existing > 0) {
+      const adminUser = await getAdminUser(request);
+      if (!adminUser) {
+        return NextResponse.json({ error: 'Требуется авторизация администратора' }, { status: 403 });
+      }
       return NextResponse.json({ message: 'Пользователи уже существуют', count: existing })
     }
 

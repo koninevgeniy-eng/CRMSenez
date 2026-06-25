@@ -96,7 +96,7 @@ export function MethodologyView({
       { status: 'event_finished', label: 'Проведено', color: 'text-orange-700', bgColor: 'bg-orange-50/50', borderColor: 'border-orange-200' },
       { status: 'methodology_actual_budget_review', label: 'Факт. методология', color: 'text-fuchsia-700', bgColor: 'bg-fuchsia-50/50', borderColor: 'border-fuchsia-200' },
       { status: 'coordination_actual_budget_review', label: 'Факт. координация', color: 'text-purple-700', bgColor: 'bg-purple-50/50', borderColor: 'border-purple-200' },
-      { status: 'actual_budget_approved', label: 'Факт. бюджет согл.', color: 'text-indigo-700', bgColor: 'bg-indigo-50/50', borderColor: 'border-indigo-200' },
+      { status: 'actual_budget_approved', label: 'К закрытию', color: 'text-indigo-700', bgColor: 'bg-indigo-50/50', borderColor: 'border-indigo-200' },
       { status: 'archived', label: 'Архив', color: 'text-green-700', bgColor: 'bg-green-50/50', borderColor: 'border-green-200' },
     ];
 
@@ -344,7 +344,7 @@ export function MethodologyView({
           <CardContent className="p-2.5 sm:p-3">
             <div className="flex items-center gap-2 sm:gap-3">
               <div className="p-1.5 sm:p-2.5 bg-orange-100 rounded-lg sm:rounded-xl shrink-0"><BanknoteIcon className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600" /></div>
-              <div className="min-w-0"><p className="text-[10px] sm:text-xs text-muted-foreground font-medium leading-tight">Факт. бюджет</p><p className="text-lg sm:text-2xl font-bold crm-stat-number crm-count-up">{events.filter(e => ['event_finished', 'methodology_actual_budget_review', 'coordination_actual_budget_review', 'pending_actual_budget', 'pending_actual_approval'].includes(e.status)).length}</p></div>
+              <div className="min-w-0"><p className="text-[10px] sm:text-xs text-muted-foreground font-medium leading-tight">Факт. бюджет</p><p className="text-lg sm:text-2xl font-bold crm-stat-number crm-count-up">{events.filter(e => ['event_finished', 'methodology_actual_budget_review', 'coordination_actual_budget_review', 'actual_budget_approved', 'pending_actual_budget', 'pending_actual_approval'].includes(e.status)).length}</p></div>
             </div>
           </CardContent>
         </Card>
@@ -352,7 +352,7 @@ export function MethodologyView({
           <CardContent className="p-2.5 sm:p-3">
             <div className="flex items-center gap-2 sm:gap-3">
               <div className="p-1.5 sm:p-2.5 bg-green-100 rounded-lg sm:rounded-xl shrink-0"><CheckCircle2 className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" /></div>
-              <div className="min-w-0"><p className="text-[10px] sm:text-xs text-muted-foreground font-medium leading-tight">Согласовано</p><p className="text-lg sm:text-2xl font-bold crm-stat-number crm-count-up">{events.filter(e => ['calendar_approved', 'organization_assignment', 'approved', 'budget_approved', 'uin_assigned', 'actual_budget_approved'].includes(e.status)).length}</p></div>
+              <div className="min-w-0"><p className="text-[10px] sm:text-xs text-muted-foreground font-medium leading-tight">Согласовано</p><p className="text-lg sm:text-2xl font-bold crm-stat-number crm-count-up">{events.filter(e => ['calendar_approved', 'organization_assignment', 'approved', 'budget_approved', 'uin_assigned'].includes(e.status)).length}</p></div>
             </div>
           </CardContent>
         </Card>

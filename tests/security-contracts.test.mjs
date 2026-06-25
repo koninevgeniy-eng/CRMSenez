@@ -31,3 +31,17 @@ test('runtime database and environment files stay untracked', async () => {
   assert.match(source, /\*\.db/);
   assert.match(source, /\/upload\//);
 });
+
+test('actual budget goes directly to coordination before methodology archival', async () => {
+  const source = await read('src/app/api/events/[id]/workflow/route.ts');
+  const submitStart = source.indexOf("case 'submit_actual_budget'");
+  const methodologyApproveStart = source.indexOf("case 'methodology_approve_actual_budget'");
+  const coordinationApproveStart = source.indexOf("case 'approve_actual_budget'");
+  const rejectStart = source.indexOf("case 'reject_actual_budget'");
+  const submitBlock = source.slice(submitStart, methodologyApproveStart);
+  const coordinationApproveBlock = source.slice(coordinationApproveStart, rejectStart);
+
+  assert.match(submitBlock, /newStatus = 'coordination_actual_budget_review'/);
+  assert.doesNotMatch(submitBlock, /newStatus = 'methodology_actual_budget_review'/);
+  assert.match(coordinationApproveBlock, /возвращен в методологию/);
+});

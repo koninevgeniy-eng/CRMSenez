@@ -56,6 +56,50 @@ model ReferenceItem {
   @@index([dictionaryId, isActive])
 }
 
+model CustomFieldDefinition {
+  id              String   @id @default(cuid())
+  entityType      String   @default("event")
+  key             String
+  label           String
+  description     String?
+  fieldType       String   @default("text") // text, textarea, number, date, boolean, select, multiselect
+  options         String?  // JSON-массив вариантов для select/multiselect
+  department      String?
+  required        Boolean  @default(false)
+  showInAnalytics Boolean  @default(true)
+  isActive        Boolean  @default(true)
+  sortOrder       Int      @default(0)
+  createdBy       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  values CustomFieldValue[]
+
+  @@unique([entityType, key])
+  @@index([entityType, isActive])
+  @@index([department])
+}
+
+model CustomFieldValue {
+  id           String   @id @default(cuid())
+  eventId      String
+  fieldId      String
+  value        String
+  valueNumber  Float?
+  valueDate    DateTime?
+  valueBoolean Boolean?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  event Event                 @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  field CustomFieldDefinition @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, fieldId])
+  @@index([fieldId, value])
+  @@index([fieldId, valueNumber])
+  @@index([fieldId, valueDate])
+}
+
 model Event {
   id          String   @id @default(cuid())
   uin         String?  @unique
@@ -152,6 +196,7 @@ model Event {
   assignments     EventAssignment[]
   approvals       EventApproval[]
   versions        EventVersion[]
+  customFieldValues CustomFieldValue[]
 }
 
 model Speaker {

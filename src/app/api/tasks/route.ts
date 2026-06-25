@@ -187,15 +187,30 @@ export async function POST(request: NextRequest) {
     }
 
     if (assigneeIds && Array.isArray(assigneeIds) && assigneeIds.length > 0) {
-      if (authUser.role === 'manager' || isEventLead) {
-        const assignees = await db.user.findMany({
-          where: { id: { in: assigneeIds }, isActive: true },
-          select: { id: true, department: true },
-        });
-        if (assignees.length !== assigneeIds.length
-          || assignees.some(user => user.department !== 'organization' || (authUser.role === 'manager' && user.department !== authUser.department))) {
+      const assignees = await db.user.findMany({
+        where: { id: { in: assigneeIds }, isActive: true },
+        select: { id: true, department: true },
+      });
+      if (assignees.length !== assigneeIds.length) {
+        return NextResponse.json(
+          { error: 'Все исполнители задачи должны быть активными пользователями' },
+          { status: 403 }
+        );
+      }
+
+      if (authUser.role === 'manager') {
+        const invalidDepartment = assignees.some(user => user.department !== authUser.department);
+        if (invalidDepartment) {
           return NextResponse.json(
-            { error: 'Задачи организации можно назначать только активным сотрудникам департамента организации' },
+            { error: 'Руководитель может назначать задачи только сотрудникам своего подразделения' },
+            { status: 403 }
+          );
+        }
+      } else if (isEventLead) {
+        const invalidOrganizationAssignee = assignees.some(user => user.department !== 'organization');
+        if (invalidOrganizationAssignee) {
+          return NextResponse.json(
+            { error: 'Руководитель мероприятия может назначать задачи только сотрудникам департамента организации' },
             { status: 403 }
           );
         }

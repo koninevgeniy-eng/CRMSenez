@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -20,7 +21,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Separator } from '@/components/ui/separator';
-import { EventData, ReferenceDictionary, ReferenceItem, UserData, DEPARTMENTS, STATUS_LABELS, STATUS_COLORS, USER_ROLE_LABELS, USER_ROLE_COLORS, UserRole } from '@/lib/crm-types';
+import { CustomFieldDefinition, EventData, ReferenceDictionary, ReferenceItem, UserData, DEPARTMENTS, STATUS_LABELS, STATUS_COLORS, USER_ROLE_LABELS, USER_ROLE_COLORS, UserRole } from '@/lib/crm-types';
 import { getStatusLabel, getStatusColor, formatDate, formatCurrency } from '@/lib/crm-utils';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from 'recharts';
 import { apiFetch } from '@/lib/api-fetch';
@@ -499,6 +500,263 @@ function ReferenceDictionariesTab() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function CustomFieldsAdminTab() {
+  const [fields, setFields] = useState<CustomFieldDefinition[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    fieldId: '',
+    label: '',
+    key: '',
+    description: '',
+    fieldType: 'text',
+    options: '',
+    department: 'all',
+    required: false,
+    showInAnalytics: true,
+    isActive: true,
+    sortOrder: '0',
+  });
+
+  const fetchFields = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await apiFetch('/api/custom-fields?includeInactive=true');
+      if (!res.ok) {
+        toast({ title: 'Ошибка загрузки гибких полей', variant: 'destructive' });
+        return;
+      }
+      const data = await res.json();
+      setFields(data.fields || []);
+    } catch {
+      toast({ title: 'Ошибка загрузки гибких полей', variant: 'destructive' });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchFields(); }, [fetchFields]);
+
+  const resetForm = () => setForm({
+    fieldId: '',
+    label: '',
+    key: '',
+    description: '',
+    fieldType: 'text',
+    options: '',
+    department: 'all',
+    required: false,
+    showInAnalytics: true,
+    isActive: true,
+    sortOrder: '0',
+  });
+
+  const editField = (field: CustomFieldDefinition) => setForm({
+    fieldId: field.id,
+    label: field.label,
+    key: field.key,
+    description: field.description || '',
+    fieldType: field.fieldType,
+    options: field.options ? JSON.parse(field.options).join('\n') : '',
+    department: field.department || 'all',
+    required: field.required,
+    showInAnalytics: field.showInAnalytics,
+    isActive: field.isActive,
+    sortOrder: String(field.sortOrder ?? 0),
+  });
+
+  const saveField = async () => {
+    if (!form.label.trim()) {
+      toast({ title: 'Укажите название поля', variant: 'destructive' });
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await apiFetch('/api/custom-fields', {
+        method: form.fieldId ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fieldId: form.fieldId || undefined,
+          label: form.label,
+          key: form.key,
+          description: form.description,
+          fieldType: form.fieldType,
+          options: form.options,
+          department: form.department === 'all' ? null : form.department,
+          required: form.required,
+          showInAnalytics: form.showInAnalytics,
+          isActive: form.isActive,
+          sortOrder: parseInt(form.sortOrder, 10) || 0,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast({ title: data.error || 'Ошибка сохранения поля', variant: 'destructive' });
+        return;
+      }
+      toast({ title: form.fieldId ? 'Поле обновлено' : 'Поле создано' });
+      resetForm();
+      fetchFields();
+    } catch {
+      toast({ title: 'Ошибка сохранения поля', variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleField = async (field: CustomFieldDefinition) => {
+    setSaving(true);
+    try {
+      const res = await apiFetch('/api/custom-fields', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fieldId: field.id,
+          label: field.label,
+          key: field.key,
+          description: field.description || '',
+          fieldType: field.fieldType,
+          options: field.options || '',
+          department: field.department,
+          required: field.required,
+          showInAnalytics: field.showInAnalytics,
+          isActive: !field.isActive,
+          sortOrder: field.sortOrder,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast({ title: data.error || 'Ошибка обновления поля', variant: 'destructive' });
+        return;
+      }
+      fetchFields();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Card className="shadow-sm border-0">
+        <CardContent className="p-8 text-center">
+          <RefreshCw className="h-8 w-8 mx-auto text-muted-foreground/40 mb-3 animate-spin" />
+          <p className="text-muted-foreground">Загрузка гибких полей...</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="shadow-sm border-0">
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2"><Settings className="h-5 w-5 text-[#E4002B]" />Гибкие поля карточки</CardTitle>
+        <CardDescription>Добавляйте поля без перезапуска сервера. Активные поля сразу появляются в карточках мероприятий и аналитике.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-6 gap-2 items-end">
+          <div className="sm:col-span-2 space-y-2">
+            <Label>Название поля</Label>
+            <Input value={form.label} onChange={e => setForm(prev => ({ ...prev, label: e.target.value }))} placeholder="Например: Оценка сложности" />
+          </div>
+          <div className="space-y-2">
+            <Label>Ключ</Label>
+            <Input value={form.key} onChange={e => setForm(prev => ({ ...prev, key: e.target.value }))} placeholder="auto" />
+          </div>
+          <div className="space-y-2">
+            <Label>Тип</Label>
+            <Select value={form.fieldType} onValueChange={value => setForm(prev => ({ ...prev, fieldType: value }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="text">Текст</SelectItem>
+                <SelectItem value="textarea">Длинный текст</SelectItem>
+                <SelectItem value="number">Число</SelectItem>
+                <SelectItem value="date">Дата</SelectItem>
+                <SelectItem value="boolean">Да/нет</SelectItem>
+                <SelectItem value="select">Список</SelectItem>
+                <SelectItem value="multiselect">Мультисписок</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Подразделение</Label>
+            <Select value={form.department} onValueChange={value => setForm(prev => ({ ...prev, department: value }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все</SelectItem>
+                {DEPARTMENTS.filter(dept => dept.id !== 'dashboard').map(dept => (
+                  <SelectItem key={dept.id} value={dept.id}>{dept.shortName}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Порядок</Label>
+            <Input type="number" value={form.sortOrder} onChange={e => setForm(prev => ({ ...prev, sortOrder: e.target.value }))} />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Textarea value={form.description} onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))} placeholder="Описание поля для пользователя" />
+          <Textarea value={form.options} onChange={e => setForm(prev => ({ ...prev, options: e.target.value }))} placeholder="Варианты для списка, каждый с новой строки" disabled={!['select', 'multiselect'].includes(form.fieldType)} />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-4">
+          <label className="flex items-center gap-2 text-sm"><Checkbox checked={form.required} onCheckedChange={checked => setForm(prev => ({ ...prev, required: Boolean(checked) }))} />Обязательное</label>
+          <label className="flex items-center gap-2 text-sm"><Checkbox checked={form.showInAnalytics} onCheckedChange={checked => setForm(prev => ({ ...prev, showInAnalytics: Boolean(checked) }))} />В аналитике</label>
+          <label className="flex items-center gap-2 text-sm"><Checkbox checked={form.isActive} onCheckedChange={checked => setForm(prev => ({ ...prev, isActive: Boolean(checked) }))} />Активно</label>
+          <Button className="bg-[#E4002B] hover:bg-[#BD0024]" disabled={saving} onClick={saveField}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : form.fieldId ? 'Сохранить поле' : 'Добавить поле'}
+          </Button>
+          {form.fieldId && <Button variant="ghost" size="sm" onClick={resetForm}>Очистить форму</Button>}
+        </div>
+
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Поле</TableHead>
+                <TableHead>Ключ</TableHead>
+                <TableHead>Тип</TableHead>
+                <TableHead>Статус</TableHead>
+                <TableHead>Аналитика</TableHead>
+                <TableHead className="text-right">Действия</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {fields.map(field => (
+                <TableRow key={field.id} className="crm-table-row-accent">
+                  <TableCell className="font-medium">{field.label}</TableCell>
+                  <TableCell className="text-xs font-mono text-muted-foreground">{field.key}</TableCell>
+                  <TableCell>{field.fieldType}</TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className={field.isActive ? 'bg-green-50 text-green-700 border-green-300' : 'bg-gray-100 text-gray-500 border-gray-300'}>
+                      {field.isActive ? 'Активно' : 'Отключено'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{field.showInAnalytics ? 'Да' : 'Нет'}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-1">
+                      <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => editField(field)}><Edit className="h-3.5 w-3.5" /></Button>
+                      <Button variant="ghost" size="sm" className="h-8 px-2" disabled={saving} onClick={() => toggleField(field)}>
+                        {field.isActive ? 'Отключить' : 'Включить'}
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {fields.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">Гибкие поля пока не созданы</TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -1210,6 +1468,7 @@ export function AdminCabinetView({
 
         {/* ====== REFERENCE DICTIONARIES TAB ====== */}
         <TabsContent value="dictionaries" className="space-y-4">
+          <CustomFieldsAdminTab />
           <ReferenceDictionariesTab />
         </TabsContent>
 

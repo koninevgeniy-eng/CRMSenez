@@ -311,12 +311,12 @@ export function AGDView({
                 </div>
               );
             }
-            const allDates = eventsWithDates.flatMap(e => [new Date(e.startDate!).getTime(), new Date(e.endDate!).getTime()]);
-            const timelineStart = new Date(Math.min(...allDates));
-            timelineStart.setDate(timelineStart.getDate() - 3);
-            const timelineEnd = new Date(Math.max(...allDates));
-            timelineEnd.setDate(timelineEnd.getDate() + 3);
-            const totalMs = timelineEnd.getTime() - timelineStart.getTime();
+            const timelineStart = new Date(filterStart);
+            const timelineEnd = new Date(filterEnd);
+            const totalMs = Math.max(1, timelineEnd.getTime() - timelineStart.getTime());
+            const totalDays = Math.max(1, Math.ceil(totalMs / (24 * 60 * 60 * 1000)));
+            const minTimelineWidth = Math.max(720, Math.min(2800, Math.ceil(totalDays / 7) * 44));
+            const useQuarterScale = totalDays > 366;
 
             const statusGanttColors: Record<string, string> = {
               calendar_approved: 'bg-emerald-500',
@@ -333,40 +333,58 @@ export function AGDView({
               completed: 'bg-green-400',
             };
 
-            // Generate month labels
-            const months: { label: string; left: number }[] = [];
-            const current = new Date(timelineStart.getFullYear(), timelineStart.getMonth(), 1);
+            // Generate readable period labels: months for normal ranges, quarters for long ranges.
+            const scaleLabels: { label: string; left: number }[] = [];
+            const current = useQuarterScale
+              ? new Date(timelineStart.getFullYear(), Math.floor(timelineStart.getMonth() / 3) * 3, 1)
+              : new Date(timelineStart.getFullYear(), timelineStart.getMonth(), 1);
             while (current <= timelineEnd) {
-              const monthStart = new Date(Math.max(current.getTime(), timelineStart.getTime()));
-              const left = ((monthStart.getTime() - timelineStart.getTime()) / totalMs) * 100;
-              months.push({ label: current.toLocaleString('ru-RU', { month: 'short', year: '2-digit' }), left });
-              current.setMonth(current.getMonth() + 1);
+              const periodStart = new Date(Math.max(current.getTime(), timelineStart.getTime()));
+              const left = ((periodStart.getTime() - timelineStart.getTime()) / totalMs) * 100;
+              scaleLabels.push({
+                label: useQuarterScale
+                  ? `Q${Math.floor(current.getMonth() / 3) + 1} ${current.getFullYear()}`
+                  : current.toLocaleString('ru-RU', { month: 'short', year: '2-digit' }),
+                left,
+              });
+              current.setMonth(current.getMonth() + (useQuarterScale ? 3 : 1));
             }
 
             return (
               <div className="overflow-x-auto crm-scroll">
-                <div className="min-w-[600px]">
-                  {/* Month labels */}
+                <div style={{ minWidth: minTimelineWidth }}>
+                  <div className="flex items-center justify-between gap-2 mb-3 text-xs text-muted-foreground">
+                    <span>Диапазон: {formatDate(timelineStart.toISOString())} — {formatDate(timelineEnd.toISOString())}</span>
+                    <span>{useQuarterScale ? 'Шкала: кварталы' : 'Шкала: месяцы'}</span>
+                  </div>
                   <div className="relative h-6 mb-2 border-b border-gray-200">
-                    {months.map((m, i) => (
+                    {scaleLabels.map((m, i) => (
                       <span key={i} className="absolute text-[10px] text-muted-foreground font-medium" style={{ left: `${Math.min(m.left, 95)}%` }}>{m.label}</span>
                     ))}
                   </div>
-                  {/* Event bars */}
                   <div className="space-y-2">
                     {eventsWithDates.map(event => {
                       const start = new Date(event.startDate!);
                       const end = new Date(event.endDate!);
-                      const leftPercent = ((start.getTime() - timelineStart.getTime()) / totalMs) * 100;
-                      const widthPercent = ((end.getTime() - start.getTime()) / totalMs) * 100;
+                      const visibleStart = Math.max(start.getTime(), timelineStart.getTime());
+                      const visibleEnd = Math.min(end.getTime(), timelineEnd.getTime());
+                      const leftPercent = Math.max(0, Math.min(100, ((visibleStart - timelineStart.getTime()) / totalMs) * 100));
+                      const rightPercent = Math.max(0, Math.min(100, ((visibleEnd - timelineStart.getTime()) / totalMs) * 100));
+                      const widthPercent = Math.max(rightPercent - leftPercent, 0.7);
                       const barColor = statusGanttColors[event.status] || 'bg-gray-400';
                       return (
-                        <div key={event.id} className="relative h-8 group cursor-pointer" onClick={() => { setSelectedEvent(event); setShowEventDialog(true); }}>
+                        <div key={event.id} className="grid grid-cols-[180px_1fr] gap-3 min-h-9 group cursor-pointer" onClick={() => { setSelectedEvent(event); setShowEventDialog(true); }}>
+                          <div className="min-w-0 text-xs">
+                            <p className="font-medium truncate">{event.title}</p>
+                            <p className="text-[10px] text-muted-foreground truncate">{formatDate(event.startDate)} — {formatDate(event.endDate)}</p>
+                          </div>
+                          <div className="relative h-8 rounded-lg bg-slate-50 border border-slate-100">
                           <div
-                            className={`absolute top-1 h-6 rounded-md ${barColor} opacity-80 hover:opacity-100 transition-opacity flex items-center px-2 overflow-hidden`}
-                            style={{ left: `${leftPercent}%`, width: `${Math.max(widthPercent, 1)}%` }}
+                            className={`absolute top-1 h-6 rounded-md ${barColor} opacity-80 hover:opacity-100 transition-opacity flex items-center px-2 overflow-hidden shadow-sm`}
+                            style={{ left: `${leftPercent}%`, width: `${widthPercent}%` }}
                           >
                             <span className="text-[10px] text-white font-medium whitespace-nowrap truncate drop-shadow-sm">{event.title}</span>
+                          </div>
                           </div>
                         </div>
                       );

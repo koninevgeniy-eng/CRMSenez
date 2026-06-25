@@ -133,6 +133,24 @@ export default function CRMPage() {
   const [showUserDialog, setShowUserDialog] = useState(false);
   const [editingUser, setEditingUser] = useState<UserData | null>(null);
   const [publicEvents, setPublicEvents] = useState<EventData[]>([]);
+  const hasDelegatedWorkflowTask = Boolean(selectedEvent?.tasks?.some(task =>
+    !task.completed
+    && (
+      task.assignments?.some(assignment => assignment.userId === user?.id)
+      || (task.assignee && task.assignee === user?.name)
+    )
+  ));
+  const isSelectedEventMethodologyOwner = Boolean(
+    selectedEvent
+    && user
+    && userDepartment === 'methodology'
+    && (selectedEvent.ownerId === user.id || !selectedEvent.ownerId)
+  );
+  const canManageSelectedWorkflow = Boolean(isAdmin || isManager || hasDelegatedWorkflowTask || isSelectedEventMethodologyOwner);
+  const canEditSelectedActualBudget = Boolean(
+    isAdmin
+    || (userDepartment === 'methodology' && (isManager || isSelectedEventMethodologyOwner))
+  );
 
   // Personal cabinet state
   const [personalView, setPersonalView] = useState<PersonalView>('overview');
@@ -211,11 +229,18 @@ export default function CRMPage() {
       const res = await apiFetch(`/api/events?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
+        const updateEventState = (nextEvents: EventData[]) => {
+          setEvents(nextEvents);
+          setSelectedEvent(current => {
+            if (!current) return current;
+            return nextEvents.find(event => event.id === current.id) || current;
+          });
+        };
         // Support both old array format and new paginated format
         if (Array.isArray(data)) {
-          setEvents(data);
+          updateEventState(data);
         } else if (data.data && Array.isArray(data.data)) {
-          setEvents(data.data);
+          updateEventState(data.data);
         }
       }
     } catch (err) {
@@ -444,9 +469,9 @@ export default function CRMPage() {
           reject: 'Мероприятие отклонено',
           start: 'Мероприятие взято в работу',
           complete: 'Мероприятие проведено — передано в Методологию',
-          submit_actual_budget: 'Фактический бюджет отправлен на согласование',
+          submit_actual_budget: 'Фактический бюджет отправлен в координацию',
           methodology_approve_actual_budget: 'Фактический бюджет согласован методологией',
-          approve_actual_budget: 'Фактический бюджет согласован',
+          approve_actual_budget: 'Фактический бюджет согласован — возвращён в методологию',
           reject_actual_budget: 'Фактический бюджет отклонён',
           finalize_event: 'Мероприятие завершено',
           request_cancel: 'Запрошена отмена мероприятия',
@@ -1675,8 +1700,9 @@ export default function CRMPage() {
             onDuplicate={() => handleDuplicateEvent(selectedEvent)}
             canEdit={isAdmin || isManager}
             canDelete={isAdmin}
-            canManageWorkflow={isAdmin || isManager}
+            canManageWorkflow={canManageSelectedWorkflow}
             canDuplicate={canCreateEvents}
+            canEditActualBudget={canEditSelectedActualBudget}
             departmentContext={activeDept === 'methodology' ? 'methodology' : activeDept === 'coordination' ? 'coordination' : 'other'}
           />
         )}

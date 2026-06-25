@@ -104,10 +104,23 @@ export async function GET(request: NextRequest) {
       include: {
         speakers: true,
         budgetItems: true,
-        tasks: true,
+        tasks: {
+          include: {
+            assignments: {
+              include: {
+                user: {
+                  select: { id: true, name: true, role: true, department: true },
+                },
+              },
+            },
+          },
+        },
         payments: true,
         approvals: true,
         versions: true,
+        customFieldValues: {
+          include: { field: true },
+        },
         assignments: {
           include: {
             user: {
@@ -203,13 +216,16 @@ export async function GET(request: NextRequest) {
     const allTasks = events.flatMap(e => e.tasks);
     const workloadByAssignee: Record<string, { total: number; completed: number }> = {};
     allTasks.forEach(t => {
-      if (t.assignee) {
-        if (!workloadByAssignee[t.assignee]) {
-          workloadByAssignee[t.assignee] = { total: 0, completed: 0 };
+      const assigneeNames = t.assignments?.length
+        ? t.assignments.map((assignment: any) => assignment.user?.name || assignment.userId)
+        : t.assignee ? [t.assignee] : [];
+      assigneeNames.forEach((name: string) => {
+        if (!workloadByAssignee[name]) {
+          workloadByAssignee[name] = { total: 0, completed: 0 };
         }
-        workloadByAssignee[t.assignee].total++;
-        if (t.completed) workloadByAssignee[t.assignee].completed++;
-      }
+        workloadByAssignee[name].total++;
+        if (t.completed) workloadByAssignee[name].completed++;
+      });
     });
     const overdueTasks = allTasks.filter(t => !t.completed && t.dueDate && new Date(t.dueDate) < now).length;
     const workloadAnalytics = {
@@ -416,6 +432,44 @@ export async function GET(request: NextRequest) {
       problemEvents: dataQualityIssues.slice(0, 20),
     };
 
+    // Flexible field analytics
+    const customFieldDefinitions = await db.customFieldDefinition.findMany({
+      where: { entityType: 'event', isActive: true, showInAnalytics: true },
+      orderBy: [{ sortOrder: 'asc' }, { label: 'asc' }],
+    });
+    const customFieldAnalytics = customFieldDefinitions.map(field => {
+      const values = events
+        .flatMap(e => e.customFieldValues || [])
+        .filter(value => value.fieldId === field.id && value.value);
+      const valueCounts = values.reduce((acc: Record<string, number>, item) => {
+        acc[item.value] = (acc[item.value] || 0) + 1;
+        return acc;
+      }, {});
+      const numericValues = values
+        .map(item => item.valueNumber)
+        .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+
+      return {
+        fieldId: field.id,
+        key: field.key,
+        label: field.label,
+        fieldType: field.fieldType,
+        department: field.department,
+        filledCount: values.length,
+        emptyCount: Math.max(0, events.length - values.length),
+        valueCounts,
+        numeric: numericValues.length > 0
+          ? {
+              count: numericValues.length,
+              sum: numericValues.reduce((sum, value) => sum + value, 0),
+              avg: numericValues.reduce((sum, value) => sum + value, 0) / numericValues.length,
+              min: Math.min(...numericValues),
+              max: Math.max(...numericValues),
+            }
+          : null,
+      };
+    });
+
     // Events by status
     const eventsByStatus: Record<string, number> = {};
     events.forEach(e => {
@@ -539,6 +593,7 @@ export async function GET(request: NextRequest) {
       eventsByProgramType,
       eventsByVenue,
       eventsByCampus,
+      customFieldAnalytics,
       // Payment analytics
       paymentAnalytics: {
         totalPendingPayments,

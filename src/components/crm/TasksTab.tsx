@@ -8,17 +8,37 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Task, TASK_CATEGORIES } from '@/lib/crm-types';
+import { Task, TASK_CATEGORIES, UserData } from '@/lib/crm-types';
 import { apiFetch } from '@/lib/api-fetch';
 
 function TasksTab({ tasks, eventId, onUpdate, editing }: { tasks: Task[]; eventId: string; onUpdate: () => void; editing: boolean }) {
   const [items, setItems] = useState(tasks);
+  const [users, setUsers] = useState<UserData[]>([]);
 
-  React.useEffect(() => { setItems(tasks); }, [tasks]);
+  React.useEffect(() => {
+    setItems(tasks.map(task => ({
+      ...task,
+      assigneeId: task.assignments?.[0]?.userId || task.assigneeId || '',
+    })));
+  }, [tasks]);
+
+  React.useEffect(() => {
+    if (!editing) return;
+    apiFetch('/api/users?isActive=true')
+      .then(res => res.ok ? res.json() : [])
+      .then(data => setUsers(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, [editing]);
 
   const addItem = () => setItems([...items, { category: 'technical', title: '', description: '', assignee: '', completed: false, priority: 'medium' }]);
   const updateItem = (index: number, field: string, value: any) => { const u = [...items]; u[index] = { ...u[index], [field]: value }; setItems(u); };
   const removeItem = (index: number) => setItems(items.filter((_, i) => i !== index));
+  const getAssigneeName = (task: Task) => {
+    const assignedUsers = task.assignments?.map(item => item.user?.name).filter(Boolean);
+    if (assignedUsers && assignedUsers.length > 0) return assignedUsers.join(', ');
+    if (task.assigneeId) return users.find(user => user.id === task.assigneeId)?.name || 'Назначен';
+    return task.assignee || '—';
+  };
 
   const saveItems = async () => {
     const validItems = items.filter(t => t.title);
@@ -34,7 +54,13 @@ function TasksTab({ tasks, eventId, onUpdate, editing }: { tasks: Task[]; eventI
         return apiFetch(`/api/tasks/${task.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(task),
+          body: JSON.stringify({
+            ...task,
+            assigneeIds: task.assigneeId ? [task.assigneeId] : [],
+            assignee: task.assigneeId
+              ? users.find(user => user.id === task.assigneeId)?.name || task.assignee
+              : task.assignee,
+          }),
         });
       }
       return apiFetch('/api/tasks', {
@@ -47,7 +73,10 @@ function TasksTab({ tasks, eventId, onUpdate, editing }: { tasks: Task[]; eventI
           description: task.description,
           dueDate: task.dueDate,
           priority: task.priority,
-          assigneeIds: [],
+          assignee: task.assigneeId
+            ? users.find(user => user.id === task.assigneeId)?.name || task.assignee
+            : task.assignee,
+          assigneeIds: task.assigneeId ? [task.assigneeId] : [],
         }),
       });
     }));
@@ -75,7 +104,16 @@ function TasksTab({ tasks, eventId, onUpdate, editing }: { tasks: Task[]; eventI
             <TableRow key={i}>
               <TableCell>{editing ? <Select value={t.category} onValueChange={v => updateItem(i, 'category', v)}><SelectTrigger className="w-36"><SelectValue /></SelectTrigger><SelectContent>{TASK_CATEGORIES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent></Select> : TASK_CATEGORIES.find(c => c.value === t.category)?.label || t.category}</TableCell>
               <TableCell>{editing ? <Input value={t.title} onChange={e => updateItem(i, 'title', e.target.value)} /> : t.title}</TableCell>
-              <TableCell>{editing ? <Input value={t.assignee || ''} onChange={e => updateItem(i, 'assignee', e.target.value)} /> : t.assignee || '—'}</TableCell>
+              <TableCell>
+                {editing ? (
+                  <Select value={t.assigneeId || ''} onValueChange={v => updateItem(i, 'assigneeId', v)}>
+                    <SelectTrigger className="w-44"><SelectValue placeholder="Выберите..." /></SelectTrigger>
+                    <SelectContent className="max-h-64">
+                      {users.map(user => <SelectItem key={user.id} value={user.id}>{user.name} {user.department ? `(${user.department})` : ''}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                ) : getAssigneeName(t)}
+              </TableCell>
               <TableCell>{editing ? <Select value={t.priority || 'medium'} onValueChange={v => updateItem(i, 'priority', v)}><SelectTrigger className="w-24"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="high">Высокий</SelectItem><SelectItem value="medium">Средний</SelectItem><SelectItem value="low">Низкий</SelectItem></SelectContent></Select> : <Badge variant={t.priority === 'high' ? 'destructive' : t.priority === 'medium' ? 'default' : 'secondary'} className="text-xs">{t.priority === 'high' ? 'Высокий' : t.priority === 'medium' ? 'Средний' : 'Низкий'}</Badge>}</TableCell>
               <TableCell><Checkbox checked={t.completed} onCheckedChange={checked => { updateItem(i, 'completed', !!checked); }} /></TableCell>
               {editing && <TableCell><Button variant="ghost" size="sm" onClick={() => removeItem(i)}><X className="h-3 w-3" /></Button></TableCell>}

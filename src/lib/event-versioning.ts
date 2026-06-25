@@ -21,6 +21,10 @@ export const EVENT_VERSION_SNAPSHOT_INCLUDE = {
       },
     },
   },
+  customFieldValues: {
+    orderBy: { createdAt: 'asc' },
+    include: { field: true },
+  },
 } as const;
 
 const VERSION_REAPPROVAL_STATUSES = new Set([
@@ -126,8 +130,12 @@ export function buildEventVersionSnapshot(event: Record<string, unknown>): strin
     changeLogs,
     approvals,
     versions,
+    customFieldValues,
     ...snapshot
   } = event;
 
-  return JSON.stringify(snapshot);
+  return JSON.stringify({
+    ...snapshot,
+    customFieldValues,
+  });
 }

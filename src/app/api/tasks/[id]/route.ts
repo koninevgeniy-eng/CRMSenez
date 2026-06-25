@@ -68,25 +68,74 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (isManager || isEventLead) {
       if (body.title !== undefined) updateData.title = body.title;
       if (body.description !== undefined) updateData.description = body.description;
+      if (body.assignee !== undefined) updateData.assignee = body.assignee;
       if (body.dueDate !== undefined) updateData.dueDate = body.dueDate ? new Date(body.dueDate) : null;
       if (body.priority !== undefined) updateData.priority = body.priority;
       if (body.category !== undefined) updateData.category = body.category;
     }
 
-    const updatedTask = await db.task.update({
-      where: { id },
-      data: updateData,
-      include: {
-        assignments: {
-          include: {
-            user: { select: { id: true, name: true, email: true, role: true, department: true } },
+    const assigneeIds = Array.isArray(body.assigneeIds)
+      ? body.assigneeIds.filter((value: unknown): value is string => typeof value === 'string' && value.trim().length > 0)
+      : undefined;
+
+    if (assigneeIds && (isManager || isEventLead)) {
+      const assignees = await db.user.findMany({
+        where: { id: { in: assigneeIds }, isActive: true },
+        select: { id: true, department: true },
+      });
+      if (assignees.length !== assigneeIds.length) {
+        return NextResponse.json({ error: 'Все исполнители задачи должны быть активными пользователями' }, { status: 403 });
+      }
+      if (authUser.role === 'manager') {
+        const invalidDepartment = assignees.some(user => user.department !== authUser.department);
+        if (invalidDepartment) {
+          return NextResponse.json({ error: 'Руководитель может назначать задачи только сотрудникам своего подразделения' }, { status: 403 });
+        }
+      } else if (isEventLead) {
+        const invalidOrganizationAssignee = assignees.some(user => user.department !== 'organization');
+        if (invalidOrganizationAssignee) {
+          return NextResponse.json({ error: 'Руководитель мероприятия может назначать задачи только сотрудникам департамента организации' }, { status: 403 });
+        }
+      }
+    }
+
+    const updatedTask = await db.$transaction(async tx => {
+      const savedTask = await tx.task.update({
+        where: { id },
+        data: updateData,
+      });
+
+      if (assigneeIds && (isManager || isEventLead)) {
+        await tx.taskAssignment.deleteMany({ where: { taskId: id } });
+        if (assigneeIds.length > 0) {
+          await tx.taskAssignment.createMany({
+            data: assigneeIds.map((uid: string) => ({
+              taskId: id,
+              userId: uid,
+              assignedBy: authUser.id,
+            })),
+          });
+        }
+      }
+
+      return tx.task.findUnique({
+        where: { id: savedTask.id },
+        include: {
+          assignments: {
+            include: {
+              user: { select: { id: true, name: true, email: true, role: true, department: true } },
+            },
+          },
+          event: {
+            select: { id: true, title: true, status: true },
           },
         },
-        event: {
-          select: { id: true, title: true, status: true },
-        },
-      },
+      });
     });
+
+    if (!updatedTask) {
+      return NextResponse.json({ error: 'Задача не найдена после обновления' }, { status: 404 });
+    }
 
     // Audit log
     await db.auditLog.create({

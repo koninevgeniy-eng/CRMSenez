@@ -53,19 +53,50 @@ function canActAsOwner(
     || (!event.ownerId && user.department === 'methodology');
 }
 
-function canUseStage(
-  user: { role: string; department: string | null },
+const STAGE_DELEGATION: Record<string, { department: string; categories: string[] }> = {
+  coordination_budget_review: { department: 'coordination', categories: ['coordination', 'budget_review', 'uin'] },
+  coordination_actual_budget_review: { department: 'coordination', categories: ['coordination', 'budget_review'] },
+  agd_date_review: { department: 'agd', categories: ['agd', 'calendar'] },
+};
+
+async function hasDelegatedStageTask(
+  eventId: string,
+  user: { id: string; name: string; role: string; department: string | null },
   stage: string,
-): boolean {
+): Promise<boolean> {
+  const delegation = STAGE_DELEGATION[stage];
+  if (!delegation || user.role !== 'employee' || user.department !== delegation.department) return false;
+
+  const delegatedTask = await db.task.findFirst({
+    where: {
+      eventId,
+      completed: false,
+      category: { in: delegation.categories },
+      OR: [
+        { assignee: user.name },
+        { assignments: { some: { userId: user.id } } },
+      ],
+    },
+    select: { id: true },
+  });
+
+  return Boolean(delegatedTask);
+}
+
+async function canUseStage(
+  eventId: string,
+  user: { id: string; name: string; role: string; department: string | null },
+  stage: string,
+): Promise<boolean> {
   if (user.role === 'admin') return true;
   if (stage === 'methodology_review' || stage === 'methodology_actual_budget_review') {
     return isManagerOf(user, 'methodology');
   }
   if (stage === 'coordination_budget_review' || stage === 'coordination_actual_budget_review') {
-    return isManagerOf(user, 'coordination');
+    return isManagerOf(user, 'coordination') || hasDelegatedStageTask(eventId, user, stage);
   }
   if (stage === 'agd_date_review') {
-    return isManagerOf(user, 'agd');
+    return isManagerOf(user, 'agd') || hasDelegatedStageTask(eventId, user, stage);
   }
   return false;
 }
@@ -216,7 +247,7 @@ export async function POST(
       }
 
       case 'methodology_approve': {
-        if (!canUseStage(authUser, 'methodology_review')) {
+        if (!await canUseStage(id, authUser, 'methodology_review')) {
           return NextResponse.json({ error: 'Согласовать карточку может руководитель методологии' }, { status: 403 });
         }
         const invalid = requireStatus(event.status, ['methodology_review'], 'Карточка не находится на согласовании методологии');
@@ -238,7 +269,7 @@ export async function POST(
             { status: 400 }
           );
         }
-        if (!canUseStage(authUser, normalizeStageForPermission(event.status))) {
+        if (!await canUseStage(id, authUser, normalizeStageForPermission(event.status))) {
           return NextResponse.json(
             { error: 'Недостаточно прав для возврата карточки на этом этапе' },
             { status: 403 }
@@ -254,8 +285,8 @@ export async function POST(
       }
 
       case 'approve_budget': {
-        if (!canUseStage(authUser, 'coordination_budget_review')) {
-          return NextResponse.json({ error: 'Бюджет может согласовать руководитель координации' }, { status: 403 });
+        if (!await canUseStage(id, authUser, 'coordination_budget_review')) {
+          return NextResponse.json({ error: 'Бюджет может согласовать руководитель координации или назначенный сотрудник координации' }, { status: 403 });
         }
         const invalid = requireStatus(
           event.status,
@@ -286,8 +317,8 @@ export async function POST(
       }
 
       case 'assign_uin': {
-        if (!canUseStage(authUser, 'coordination_budget_review')) {
-          return NextResponse.json({ error: 'УИН может присвоить руководитель координации' }, { status: 403 });
+        if (!await canUseStage(id, authUser, 'coordination_budget_review')) {
+          return NextResponse.json({ error: 'УИН может присвоить руководитель координации или назначенный сотрудник координации' }, { status: 403 });
         }
         const invalid = requireStatus(
           event.status,
@@ -308,8 +339,8 @@ export async function POST(
 
       case 'agd_approve':
       case 'add_to_calendar': {
-        if (!canUseStage(authUser, 'agd_date_review')) {
-          return NextResponse.json({ error: 'Поставить мероприятие в календарь может руководитель АГД' }, { status: 403 });
+        if (!await canUseStage(id, authUser, 'agd_date_review')) {
+          return NextResponse.json({ error: 'Поставить мероприятие в календарь может руководитель АГД или назначенный сотрудник АГД' }, { status: 403 });
         }
         const invalid = requireStatus(
           event.status,
@@ -405,15 +436,18 @@ export async function POST(
             { status: 400 }
           );
         }
-        newStatus = 'methodology_actual_budget_review';
+        newStatus = 'coordination_actual_budget_review';
         decision = 'actual_budget_submitted';
-        notificationMsg = `Фактический бюджет мероприятия "${event.title}" направлен руководителю методологии`;
+        updateData.actualBudgetApproved = false;
+        updateData.actualBudgetApprovedBy = null;
+        updateData.actualBudgetApprovedAt = null;
+        notificationMsg = `Фактический бюджет мероприятия "${event.title}" направлен в координацию`;
         notificationType = 'approval';
         break;
       }
 
       case 'methodology_approve_actual_budget': {
-        if (!canUseStage(authUser, 'methodology_actual_budget_review')) {
+        if (!await canUseStage(id, authUser, 'methodology_actual_budget_review')) {
           return NextResponse.json({ error: 'Фактический бюджет согласует руководитель методологии' }, { status: 403 });
         }
         const invalid = requireStatus(
@@ -430,8 +464,8 @@ export async function POST(
       }
 
       case 'approve_actual_budget': {
-        if (!canUseStage(authUser, 'coordination_actual_budget_review')) {
-          return NextResponse.json({ error: 'Фактический бюджет согласует руководитель координации' }, { status: 403 });
+        if (!await canUseStage(id, authUser, 'coordination_actual_budget_review')) {
+          return NextResponse.json({ error: 'Фактический бюджет согласует руководитель координации или назначенный сотрудник координации' }, { status: 403 });
         }
         const invalid = requireStatus(
           event.status,
@@ -444,7 +478,7 @@ export async function POST(
         updateData.actualBudgetApproved = true;
         updateData.actualBudgetApprovedBy = changedBy;
         updateData.actualBudgetApprovedAt = new Date();
-        notificationMsg = `Фактический бюджет мероприятия "${event.title}" согласован координацией`;
+        notificationMsg = `Фактический бюджет мероприятия "${event.title}" согласован координацией и возвращен в методологию для закрытия в архив`;
         notificationType = 'approval';
         break;
       }
@@ -452,8 +486,8 @@ export async function POST(
       case 'reject_actual_budget': {
         const commentError = requireComment(comment, 'При возврате фактического бюджета нужна причина');
         if (commentError) return commentError;
-        if (!canUseStage(authUser, 'coordination_actual_budget_review')) {
-          return NextResponse.json({ error: 'Фактический бюджет возвращает руководитель координации' }, { status: 403 });
+        if (!await canUseStage(id, authUser, 'coordination_actual_budget_review')) {
+          return NextResponse.json({ error: 'Фактический бюджет возвращает руководитель координации или назначенный сотрудник координации' }, { status: 403 });
         }
         const invalid = requireStatus(
           event.status,
@@ -613,6 +647,22 @@ export async function POST(
             assignee: changedBy,
             priority: 'high',
           },
+        });
+      }
+
+      const delegatedStage = STAGE_DELEGATION[normalizeStageForPermission(stage)];
+      if (delegatedStage && authUser.role === 'employee') {
+        await tx.task.updateMany({
+          where: {
+            eventId: id,
+            completed: false,
+            category: { in: delegatedStage.categories },
+            OR: [
+              { assignee: authUser.name },
+              { assignments: { some: { userId: authUser.id } } },
+            ],
+          },
+          data: { completed: true },
         });
       }
 

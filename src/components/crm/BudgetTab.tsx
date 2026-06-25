@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Plus, X, Banknote, AlertTriangle, CheckCircle2, Edit, Save, RotateCcw, Info } from 'lucide-react';
+import { Plus, X, Banknote, AlertTriangle, CheckCircle2, Edit, Save, RotateCcw, Info, Send, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { BudgetItem } from '@/lib/crm-types';
+import { BudgetItem, EventStatus } from '@/lib/crm-types';
 import { BUDGET_CATEGORIES } from '@/lib/crm-types';
 import { formatCurrency } from '@/lib/crm-utils';
 import { apiFetch } from '@/lib/api-fetch';
@@ -23,18 +23,39 @@ interface BudgetTabProps {
   editing: boolean;
   /** Which department context is viewing this tab */
   departmentContext?: 'methodology' | 'coordination' | 'other';
+  eventStatus?: EventStatus;
+  canEditActualBudget?: boolean;
+  onWorkflowAction?: (id: string, action: string, comment?: string, uin?: string) => void | Promise<void>;
 }
 
-function BudgetTab({ budgetItems, totalBudget, eventId, onUpdate, editing, departmentContext = 'other' }: BudgetTabProps) {
+function BudgetTab({
+  budgetItems,
+  totalBudget,
+  eventId,
+  onUpdate,
+  editing,
+  departmentContext = 'other',
+  eventStatus,
+  canEditActualBudget = false,
+  onWorkflowAction,
+}: BudgetTabProps) {
   const [items, setItems] = useState(budgetItems);
   const [budgetCorrectionMode, setBudgetCorrectionMode] = useState(false);
   const [correctionComment, setCorrectionComment] = useState('');
   const [correctionItems, setCorrectionItems] = useState<Record<number, number>>({});
+  const [actualBudgetMode, setActualBudgetMode] = useState(false);
+  const [isSavingActualBudget, setIsSavingActualBudget] = useState(false);
 
   React.useEffect(() => { setItems(budgetItems); }, [budgetItems]);
 
   const isCoordination = departmentContext === 'coordination';
   const canCorrectBudget = isCoordination;
+  const canSubmitActualBudgetNow = canEditActualBudget
+    && (eventStatus === 'event_finished' || eventStatus === 'pending_actual_budget');
+  const isActualBudgetCoordinationReview = eventStatus === 'coordination_actual_budget_review'
+    || eventStatus === 'pending_actual_approval';
+  const isActualBudgetApproved = eventStatus === 'actual_budget_approved';
+  const canEditActualFields = editing || actualBudgetMode;
 
   const getItemArticle = (item: BudgetItem) => item.article || item.category || '';
   const getItemComment = (item: BudgetItem) => item.comment || item.description || '';
@@ -103,49 +124,126 @@ function BudgetTab({ budgetItems, totalBudget, eventId, onUpdate, editing, depar
 
   const removeItem = (index: number) => setItems(items.filter((_, i) => i !== index));
 
-  const saveItems = async () => {
-    const validItems = items.map(normalizeItemForSave);
+  const validateItemsForSave = (validItems: BudgetItem[]) => {
     for (const item of validItems) {
       if (!item.number || item.number <= 0 || !Number.isInteger(item.number)) {
         toast({ title: 'У каждой строки бюджета должен быть положительный номер', variant: 'destructive' });
-        return;
+        return false;
       }
       if (!item.article) {
         toast({ title: `Укажите статью в строке №${item.number}`, variant: 'destructive' });
-        return;
+        return false;
       }
       if (item.quantity === undefined || item.quantity < 0) {
         toast({ title: `Количество не может быть отрицательным: ${item.article}`, variant: 'destructive' });
-        return;
+        return false;
       }
       if (item.unitPrice === undefined || item.unitPrice < 0) {
         toast({ title: `Цена не может быть отрицательной: ${item.article}`, variant: 'destructive' });
-        return;
+        return false;
       }
       if (item.plannedAmount < 0) {
         toast({ title: `Сумма не может быть отрицательной: ${item.article}`, variant: 'destructive' });
-        return;
+        return false;
       }
       if (!item.comment?.trim()) {
         toast({ title: `Комментарий обязателен: ${item.article}`, variant: 'destructive' });
-        return;
+        return false;
       }
       if (item.actualAmount !== null && item.actualAmount !== undefined && item.actualAmount < 0) {
         toast({ title: `Фактическая сумма не может быть отрицательной: ${item.article}`, variant: 'destructive' });
-        return;
+        return false;
       }
       if (item.actualAmount !== null && item.actualAmount !== undefined && item.actualAmount > item.plannedAmount && !item.overrunReason?.trim()) {
         toast({ title: `Укажите причину перерасхода: ${item.article}`, variant: 'destructive' });
-        return;
+        return false;
       }
     }
-    await apiFetch(`/api/events/${eventId}`, {
+    return true;
+  };
+
+  const saveBudgetPayload = async (
+    validItems: BudgetItem[],
+    extraPayload: Record<string, unknown>,
+    successTitle: string,
+  ) => {
+    const res = await apiFetch(`/api/events/${eventId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ budgetItems: validItems, changedBy: 'Пользователь' }),
+      body: JSON.stringify({ budgetItems: validItems, changedBy: 'Пользователь', ...extraPayload }),
     });
+    if (!res.ok) {
+      let description = 'Не удалось сохранить бюджет';
+      try {
+        const err = await res.json();
+        description = err.error || description;
+      } catch {}
+      toast({ title: 'Ошибка', description, variant: 'destructive' });
+      return false;
+    }
     onUpdate();
-    toast({ title: 'Бюджет сохранён' });
+    toast({ title: successTitle });
+    return true;
+  };
+
+  const saveItems = async () => {
+    const validItems = items.map(normalizeItemForSave);
+    if (!validateItemsForSave(validItems)) return;
+    await saveBudgetPayload(validItems, {}, 'Бюджет сохранён');
+  };
+
+  const saveActualBudget = async (sendToCoordination = false) => {
+    if (!canSubmitActualBudgetNow) {
+      toast({
+        title: 'Фактический бюджет пока нельзя отправить',
+        description: 'Дождитесь статуса «Мероприятие проведено».',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const validItems = items.map(normalizeItemForSave);
+    if (!validateItemsForSave(validItems)) return;
+
+    const hasAnyActualValue = validItems.some(item => item.actualAmount !== null && item.actualAmount !== undefined);
+    if (!hasAnyActualValue) {
+      toast({
+        title: 'Заполните фактический бюджет',
+        description: 'Укажите фактическую сумму хотя бы в одной строке бюджета.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const actualCost = validItems.reduce((sum, item) => sum + (item.actualAmount || 0), 0);
+    setIsSavingActualBudget(true);
+    try {
+      const saved = await saveBudgetPayload(
+        validItems,
+        {
+          actualCost,
+          changeDescription: sendToCoordination
+            ? 'Фактический бюджет внесен и направлен в координацию'
+            : 'Внесен фактический бюджет',
+        },
+        sendToCoordination ? 'Фактический бюджет сохранён' : 'Фактический бюджет сохранён'
+      );
+      if (!saved) return;
+
+      setActualBudgetMode(false);
+      if (sendToCoordination) {
+        if (!onWorkflowAction) {
+          toast({
+            title: 'Бюджет сохранён',
+            description: 'Отправка в координацию недоступна в этом представлении.',
+          });
+          return;
+        }
+        await onWorkflowAction(eventId, 'submit_actual_budget');
+      }
+    } finally {
+      setIsSavingActualBudget(false);
+    }
   };
 
   /** Save budget corrections (coordination department) — preserves original amounts */
@@ -259,6 +357,67 @@ function BudgetTab({ budgetItems, totalBudget, eventId, onUpdate, editing, depar
           )}
         </div>
       </div>
+
+      {canSubmitActualBudgetNow && (
+        <div className="p-4 rounded-xl border-2 border-orange-200 bg-orange-50 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge className="bg-orange-600 text-white">Следующий шаг</Badge>
+                <h4 className="font-semibold text-orange-900">Внести фактический бюджет</h4>
+              </div>
+              <p className="text-sm text-orange-800">
+                Заполните колонку «Факт» по строкам бюджета. Если фактическая сумма выше плана,
+                обязательно укажите причину перерасхода. После сохранения карточка уйдет сразу в координацию.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2 shrink-0">
+              {!actualBudgetMode && (
+                <Button size="sm" variant="outline" className="gap-1.5 border-orange-300 text-orange-800" onClick={() => setActualBudgetMode(true)}>
+                  <Edit className="h-3 w-3" /> Внести факт
+                </Button>
+              )}
+              <Button
+                size="sm"
+                className="gap-1.5 bg-orange-600 hover:bg-orange-700"
+                disabled={isSavingActualBudget}
+                onClick={() => saveActualBudget(true)}
+              >
+                <Send className="h-3 w-3" /> Сохранить и отправить в координацию
+              </Button>
+            </div>
+          </div>
+          {actualBudgetMode && (
+            <div className="flex items-start gap-2 p-2 rounded-lg bg-white/70 border border-orange-100">
+              <Info className="h-4 w-4 text-orange-600 shrink-0 mt-0.5" />
+              <p className="text-xs text-orange-800">
+                Сейчас открыт режим фактического бюджета: плановые поля заблокированы, редактируются только «Факт»,
+                «Причина перерасхода» и «Статус оплаты».
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {isActualBudgetCoordinationReview && (
+        <div className="p-3 rounded-xl border border-purple-200 bg-purple-50 flex items-start gap-2">
+          <Clock className="h-4 w-4 text-purple-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-purple-900">Фактический бюджет на согласовании координации</p>
+            <p className="text-xs text-purple-800">После согласования карточка вернется в методологию для закрытия и отправки в архив.</p>
+          </div>
+        </div>
+      )}
+
+      {isActualBudgetApproved && canEditActualBudget && (
+        <div className="p-3 rounded-xl border border-indigo-200 bg-indigo-50 flex items-start gap-2">
+          <CheckCircle2 className="h-4 w-4 text-indigo-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-indigo-900">Фактический бюджет согласован координацией</p>
+            <p className="text-xs text-indigo-800">Карточка снова у методологии. Завершите мероприятие, чтобы отправить его в архив.</p>
+          </div>
+        </div>
+      )}
 
       {/* Coordination: Budget correction button */}
       {canCorrectBudget && !budgetCorrectionMode && !editing && (
@@ -456,18 +615,26 @@ function BudgetTab({ budgetItems, totalBudget, eventId, onUpdate, editing, depar
                   )}
 
                   <TableCell className="text-right">
-                    {editing ? (
-                      <Input type="number" min={0} value={b.actualAmount || ''} onChange={e => updateItem(i, 'actualAmount', parseFloat(e.target.value) || 0)} className="w-28" />
+                    {canEditActualFields ? (
+                      <Input
+                        type="number"
+                        min={0}
+                        value={b.actualAmount ?? ''}
+                        onChange={e => updateItem(i, 'actualAmount', e.target.value === '' ? undefined : parseFloat(e.target.value) || 0)}
+                        className={`w-28 ${actualBudgetMode ? 'border-orange-300 focus-visible:ring-orange-500 bg-orange-50/40' : ''}`}
+                        placeholder="Факт"
+                      />
                     ) : (
                       <span className={isOverBudget ? 'text-red-600 font-semibold' : ''}>{formatCurrency(b.actualAmount)}</span>
                     )}
                   </TableCell>
                   <TableCell className="text-xs sm:text-sm min-w-[180px]">
-                    {editing ? (
+                    {canEditActualFields ? (
                       <Input
                         value={b.overrunReason || ''}
                         onChange={e => updateItem(i, 'overrunReason', e.target.value)}
                         placeholder={isOverBudget ? 'Причина обязательна' : '—'}
+                        className={actualBudgetMode ? 'border-orange-200 focus-visible:ring-orange-500' : ''}
                       />
                     ) : (
                       isOverBudget
@@ -476,7 +643,7 @@ function BudgetTab({ budgetItems, totalBudget, eventId, onUpdate, editing, depar
                     )}
                   </TableCell>
                   <TableCell>
-                    {editing ? (
+                    {canEditActualFields ? (
                       <Select value={b.status || 'planned'} onValueChange={v => updateItem(i, 'status', v)}>
                         <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
                         <SelectContent>
@@ -552,6 +719,38 @@ function BudgetTab({ budgetItems, totalBudget, eventId, onUpdate, editing, depar
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={addItem}><Plus className="h-3 w-3 mr-1" />Добавить строку</Button>
           <Button size="sm" onClick={saveItems} className="bg-[#E4002B]">Сохранить бюджет</Button>
+        </div>
+      )}
+      {actualBudgetMode && !editing && (
+        <div className="flex items-center gap-2 flex-wrap p-3 rounded-xl border border-orange-200 bg-orange-50">
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-orange-300 text-orange-800"
+            disabled={isSavingActualBudget}
+            onClick={() => saveActualBudget(false)}
+          >
+            <Save className="h-3 w-3 mr-1" />Сохранить факт
+          </Button>
+          <Button
+            size="sm"
+            className="bg-orange-600 hover:bg-orange-700"
+            disabled={isSavingActualBudget}
+            onClick={() => saveActualBudget(true)}
+          >
+            <Send className="h-3 w-3 mr-1" />Сохранить и отправить в координацию
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={isSavingActualBudget}
+            onClick={() => {
+              setActualBudgetMode(false);
+              setItems(budgetItems);
+            }}
+          >
+            Отмена
+          </Button>
         </div>
       )}
     </div>

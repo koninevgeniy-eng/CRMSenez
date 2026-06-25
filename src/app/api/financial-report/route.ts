@@ -95,7 +95,7 @@ export async function GET(request: NextRequest) {
       event_finished: 'Мероприятие проведено',
       methodology_actual_budget_review: 'Факт. бюджет у методологии',
       coordination_actual_budget_review: 'Факт. бюджет у координации',
-      actual_budget_approved: 'Факт. бюджет согласован',
+      actual_budget_approved: 'Факт согласован, к закрытию',
       cancel_requested: 'Запрошена отмена',
       archived: 'Архив',
       pending_approval: 'На согласовании',

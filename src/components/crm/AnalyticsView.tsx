@@ -282,6 +282,7 @@ export function AnalyticsView({
   const workloadAnalytics = analyticsData.workloadAnalytics || {};
   const versionAnalytics = analyticsData.versionAnalytics || {};
   const dataQualityAnalytics = analyticsData.dataQualityAnalytics || {};
+  const customFieldAnalytics = analyticsData.customFieldAnalytics || [];
   const approvalQueueData = Object.entries(processAnalytics.currentApprovalQueue || {}).map(([name, value]) => ({
     name: getStageLabel(name),
     value: value as number,
@@ -471,6 +472,21 @@ export function AnalyticsView({
                 item.currentVersion,
                 item.versionsCount,
                 item.lastReason || '',
+              ]),
+            ],
+          },
+          {
+            name: 'Гибкие поля',
+            columnWidths: [30, 18, 14, 14, 18, 46],
+            rows: [
+              ['Поле', 'Тип', 'Заполнено', 'Пусто', 'Среднее', 'Значения'],
+              ...customFieldAnalytics.map((field: any) => [
+                field.label,
+                field.fieldType,
+                field.filledCount,
+                field.emptyCount,
+                field.numeric?.avg ?? '',
+                Object.entries(field.valueCounts || {}).map(([value, count]) => `${value}: ${count}`).join('; '),
               ]),
             ],
           },
@@ -904,6 +920,56 @@ export function AnalyticsView({
                   </div>
                 ))}
               </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Flexible Fields Analytics */}
+      {customFieldAnalytics.length > 0 && (
+        <Card className="shadow-sm border-0">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-sky-400" />Гибкие поля карточек</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Поле</TableHead>
+                    <TableHead>Тип</TableHead>
+                    <TableHead>Заполнено</TableHead>
+                    <TableHead>Пусто</TableHead>
+                    <TableHead>Числовая сводка</TableHead>
+                    <TableHead>Частые значения</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {customFieldAnalytics.map((field: any) => {
+                    const topValues = Object.entries(field.valueCounts || {})
+                      .sort((a: any, b: any) => b[1] - a[1])
+                      .slice(0, 4);
+                    return (
+                      <TableRow key={field.fieldId}>
+                        <TableCell className="font-medium">{field.label}</TableCell>
+                        <TableCell>{field.fieldType}</TableCell>
+                        <TableCell>{field.filledCount}</TableCell>
+                        <TableCell>{field.emptyCount}</TableCell>
+                        <TableCell>
+                          {field.numeric
+                            ? `ср. ${formatNumber(Math.round(field.numeric.avg))}, сумма ${formatNumber(Math.round(field.numeric.sum))}`
+                            : '—'}
+                        </TableCell>
+                        <TableCell>
+                          {topValues.length > 0
+                            ? topValues.map(([value, count]: any) => `${value}: ${count}`).join('; ')
+                            : '—'}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
             </div>
           </CardContent>
         </Card>

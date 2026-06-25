@@ -113,14 +113,10 @@ export function hasPlannedBudgetChange(existingItems: any[], nextItems: any[]): 
   return normalizedNext.some((next, index) => {
     const previous = nextItems[index]?.id ? existingById.get(nextItems[index].id) : existingItems[index];
     if (!previous) return true;
+    const normalizedPrevious = normalizeBudgetItem(previous, index);
 
     return PLANNED_CHANGE_FIELDS.some(field => {
-      const prevValue = field === 'article'
-        ? previous.article || previous.category
-        : field === 'comment'
-          ? previous.comment || previous.description
-          : previous[field];
-      return normalizeComparable(prevValue) !== normalizeComparable((next as any)[field]);
+      return normalizeComparable((normalizedPrevious as any)[field]) !== normalizeComparable((next as any)[field]);
     });
   });
 }

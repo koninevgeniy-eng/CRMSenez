@@ -40,7 +40,7 @@ import { Separator } from '@/components/ui/separator';
 import { ClipboardList } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import {
-  EventData, EventStatus, ReferenceDictionary, WORKFLOW_STAGES,
+  CustomFieldDefinition, EventData, EventStatus, ReferenceDictionary, WORKFLOW_STAGES,
 } from '@/lib/crm-types';
 import {
   getStatusLabel, getStatusColor, formatDate, formatCurrency,
@@ -63,6 +63,7 @@ import { TasksTab } from '@/components/crm/TasksTab';
 import { CommentsTab } from '@/components/crm/CommentsTab';
 import { PaymentsTab } from '@/components/crm/PaymentsTab';
 import { AnalyticalReportTab } from '@/components/crm/AnalyticalReportTab';
+import { CustomFieldsPanel } from '@/components/crm/CustomFieldsPanel';
 
 const ROLE_LABELS: Record<string, string> = {
   admin: 'Администратор',
@@ -92,7 +93,7 @@ const APPROVAL_DECISION_LABELS: Record<string, string> = {
   event_finished: 'Мероприятие проведено',
   actual_budget_submitted: 'Фактический бюджет направлен',
   actual_budget_methodology_approved: 'Фактический бюджет согласован методологией',
-  actual_budget_approved: 'Фактический бюджет согласован',
+  actual_budget_approved: 'Факт согласован, карточка у методологии',
   actual_budget_revision_requested: 'Фактический бюджет на доработке',
   archived: 'Закрыто и направлено в архив',
   cancel_requested: 'Запрошена отмена',
@@ -129,7 +130,7 @@ const getDecisionColor = (decision: string) => {
   return 'bg-amber-50 text-amber-700 border-amber-300';
 };
 
-function EventDetailDialog({ event, open, onClose, onUpdate, onDelete, onWorkflowAction, onExport, onDuplicate, canEdit = false, canDelete = false, canManageWorkflow = false, canDuplicate = false, departmentContext = 'other' }: {
+function EventDetailDialog({ event, open, onClose, onUpdate, onDelete, onWorkflowAction, onExport, onDuplicate, canEdit = false, canDelete = false, canManageWorkflow = false, canDuplicate = false, canEditActualBudget = false, departmentContext = 'other' }: {
   event: EventData;
   open: boolean;
   onClose: () => void;
@@ -142,6 +143,7 @@ function EventDetailDialog({ event, open, onClose, onUpdate, onDelete, onWorkflo
   canDelete?: boolean;
   canManageWorkflow?: boolean;
   canDuplicate?: boolean;
+  canEditActualBudget?: boolean;
   departmentContext?: 'methodology' | 'coordination' | 'other';
 }) {
   const [activeTab, setActiveTab] = useState('main');
@@ -156,14 +158,21 @@ function EventDetailDialog({ event, open, onClose, onUpdate, onDelete, onWorkflo
       }
     }
   }, [activeTab]);
-  const initialFormData = {
+  const initialFormData = React.useMemo(() => ({
     ...event,
     startDate: event.startDate ? new Date(event.startDate).toISOString().split('T')[0] : '',
     endDate: event.endDate ? new Date(event.endDate).toISOString().split('T')[0] : '',
-  };
+    customFieldValues: Object.fromEntries((event.customFieldValues || []).map(item => [item.fieldId, item.value])),
+  }), [event]);
   const [formData, setFormData] = useState<any>(initialFormData);
   const [editing, setEditing] = useState(false);
   const [dictionaries, setDictionaries] = useState<ReferenceDictionary[]>([]);
+  const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
+
+  useEffect(() => {
+    setFormData(initialFormData);
+    setEditing(false);
+  }, [initialFormData, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -172,6 +181,13 @@ function EventDetailDialog({ event, open, onClose, onUpdate, onDelete, onWorkflo
         if (!res.ok) return;
         const data = await res.json();
         setDictionaries(data.dictionaries || []);
+      })
+      .catch(() => {});
+    apiFetch('/api/custom-fields')
+      .then(async res => {
+        if (!res.ok) return;
+        const data = await res.json();
+        setCustomFields(data.fields || []);
       })
       .catch(() => {});
   }, [open]);
@@ -190,6 +206,7 @@ function EventDetailDialog({ event, open, onClose, onUpdate, onDelete, onWorkflo
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...payload,
+          customFieldValues: formData.customFieldValues || {},
           changeDescription: `Редактирование мероприятия "${event.title}"`,
         }),
       });
@@ -207,6 +224,15 @@ function EventDetailDialog({ event, open, onClose, onUpdate, onDelete, onWorkflo
 
   const updateField = (field: string, value: any) => {
     setFormData((prev: any) => ({ ...prev, [field]: value }));
+  };
+  const updateCustomField = (fieldId: string, value: unknown) => {
+    setFormData((prev: any) => ({
+      ...prev,
+      customFieldValues: {
+        ...(prev.customFieldValues || {}),
+        [fieldId]: value,
+      },
+    }));
   };
 
   const askRequiredComment = (message: string) => {
@@ -226,6 +252,8 @@ function EventDetailDialog({ event, open, onClose, onUpdate, onDelete, onWorkflo
   const approvals = event.approvals || [];
   const changeLogs = event.changeLogs || [];
   const hasHistory = versions.length > 0 || approvals.length > 0 || changeLogs.length > 0;
+  const shouldShowActualBudgetPrompt = canEditActualBudget && canSubmitActualBudget(event.status);
+  const shouldShowArchivePrompt = canManageWorkflow && canFinalizeEvent(event.status) && canEditActualBudget;
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -303,6 +331,34 @@ function EventDetailDialog({ event, open, onClose, onUpdate, onDelete, onWorkflo
             {event.venue && <span className="flex items-center gap-1.5 truncate"><MapPin className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{event.venue}</span></span>}
             {event.budget && <span className="flex items-center gap-1.5"><Banknote className="h-3.5 w-3.5 shrink-0" />{formatCurrency(event.budget)}</span>}
           </DialogDescription>
+          {shouldShowActualBudgetPrompt && (
+            <div className="mt-2 p-3 rounded-xl border-2 border-orange-200 bg-orange-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex items-start gap-2">
+                <Banknote className="h-5 w-5 text-orange-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-orange-900">Нужно внести фактический бюджет</p>
+                  <p className="text-xs text-orange-800">Откройте вкладку «Факт. бюджет», заполните суммы и отправьте карточку сразу в координацию.</p>
+                </div>
+              </div>
+              <Button size="sm" className="bg-orange-600 hover:bg-orange-700 shrink-0" onClick={() => setActiveTab('budget')}>
+                Открыть факт. бюджет
+              </Button>
+            </div>
+          )}
+          {shouldShowArchivePrompt && (
+            <div className="mt-2 p-3 rounded-xl border border-indigo-200 bg-indigo-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex items-start gap-2">
+                <CheckCircle2 className="h-5 w-5 text-indigo-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-indigo-900">Фактический бюджет согласован координацией</p>
+                  <p className="text-xs text-indigo-800">Карточка вернулась в методологию. Теперь её можно закрыть и отправить в архив.</p>
+                </div>
+              </div>
+              <Button size="sm" className="bg-green-600 hover:bg-green-700 shrink-0" onClick={() => onWorkflowAction(event.id, 'finalize_event')}>
+                Отправить в архив
+              </Button>
+            </div>
+          )}
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="overflow-hidden" style={{ flex: '1 1 0%', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
@@ -312,7 +368,10 @@ function EventDetailDialog({ event, open, onClose, onUpdate, onDelete, onWorkflo
               <TabsTrigger value="assignments" className="text-xs data-[state=active]:text-[#E4002B] data-[state=active]:font-semibold">Назначения {event.assignments?.length > 0 && <Badge variant="secondary" className="ml-1 text-[10px] h-4 px-1">{event.assignments.length}</Badge>}</TabsTrigger>
               <TabsTrigger value="contacts" className="text-xs data-[state=active]:text-[#E4002B] data-[state=active]:font-semibold">Контакты {event.contacts.length > 0 && <Badge variant="secondary" className="ml-1 text-[10px] h-4 px-1">{event.contacts.length}</Badge>}</TabsTrigger>
               <TabsTrigger value="speakers" className="text-xs data-[state=active]:text-[#E4002B] data-[state=active]:font-semibold">Спикеры {event.speakers.length > 0 && <Badge variant="secondary" className="ml-1 text-[10px] h-4 px-1">{event.speakers.length}</Badge>}</TabsTrigger>
-              <TabsTrigger value="budget" className="text-xs data-[state=active]:text-[#E4002B] data-[state=active]:font-semibold">Бюджет {event.budgetItems.length > 0 && <Badge variant="secondary" className="ml-1 text-[10px] h-4 px-1">{event.budgetItems.length}</Badge>}</TabsTrigger>
+              <TabsTrigger value="budget" className="text-xs data-[state=active]:text-[#E4002B] data-[state=active]:font-semibold">
+                {canSubmitActualBudget(event.status) ? 'Факт. бюджет' : 'Бюджет'} {event.budgetItems.length > 0 && <Badge variant="secondary" className="ml-1 text-[10px] h-4 px-1">{event.budgetItems.length}</Badge>}
+              </TabsTrigger>
+              <TabsTrigger value="custom" className="text-xs data-[state=active]:text-[#E4002B] data-[state=active]:font-semibold">Гибкие поля {(event.customFieldValues || []).length > 0 && <Badge variant="secondary" className="ml-1 text-[10px] h-4 px-1">{event.customFieldValues?.length}</Badge>}</TabsTrigger>
               <TabsTrigger value="rooms" className="text-xs data-[state=active]:text-[#E4002B] data-[state=active]:font-semibold">Залы {event.rooms.length > 0 && <Badge variant="secondary" className="ml-1 text-[10px] h-4 px-1">{event.rooms.length}</Badge>}</TabsTrigger>
               <TabsTrigger value="meals" className="text-xs data-[state=active]:text-[#E4002B] data-[state=active]:font-semibold">Питание {event.meals.length > 0 && <Badge variant="secondary" className="ml-1 text-[10px] h-4 px-1">{event.meals.length}</Badge>}</TabsTrigger>
               <TabsTrigger value="logistics" className="text-xs data-[state=active]:text-[#E4002B] data-[state=active]:font-semibold">Логистика</TabsTrigger>
@@ -391,7 +450,26 @@ function EventDetailDialog({ event, open, onClose, onUpdate, onDelete, onWorkflo
             </TabsContent>
 
             <TabsContent value="budget" className="mt-0">
-              <BudgetTab budgetItems={event.budgetItems} totalBudget={event.budget} eventId={event.id} onUpdate={onUpdate} editing={editing} departmentContext={departmentContext} />
+              <BudgetTab
+                budgetItems={event.budgetItems}
+                totalBudget={event.budget}
+                eventId={event.id}
+                onUpdate={onUpdate}
+                editing={editing}
+                departmentContext={departmentContext}
+                eventStatus={event.status}
+                canEditActualBudget={canEditActualBudget}
+                onWorkflowAction={onWorkflowAction}
+              />
+            </TabsContent>
+
+            <TabsContent value="custom" className="mt-0">
+              <CustomFieldsPanel
+                fields={customFields}
+                values={editing ? (formData.customFieldValues || {}) : (event.customFieldValues || [])}
+                editing={editing}
+                onChange={updateCustomField}
+              />
             </TabsContent>
 
             <TabsContent value="rooms" className="mt-0">

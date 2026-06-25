@@ -4,6 +4,72 @@ import bcrypt from 'bcryptjs'
 import { randomUUID } from 'crypto'
 import { rateLimit, getClientIp } from '@/lib/rate-limit'
 
+const DEV_TEST_USERS = [
+  {
+    email: 'admin@senez.ru',
+    name: 'Администратор',
+    password: 'admin123',
+    role: 'admin',
+    department: null,
+  },
+  {
+    email: 'methodology@senez.ru',
+    name: 'Алексей Иванов',
+    password: 'method123',
+    role: 'manager',
+    department: 'methodology',
+  },
+  {
+    email: 'coordination@senez.ru',
+    name: 'Елена Козлова',
+    password: 'coordination123',
+    role: 'manager',
+    department: 'coordination',
+  },
+  {
+    email: 'agd@senez.ru',
+    name: 'Мария Петрова',
+    password: 'agd123',
+    role: 'manager',
+    department: 'agd',
+  },
+  {
+    email: 'organization@senez.ru',
+    name: 'Сергей Белов',
+    password: 'org123',
+    role: 'manager',
+    department: 'organization',
+  },
+  {
+    email: 'analytics@senez.ru',
+    name: 'Дмитрий Смирнов',
+    password: 'analytics123',
+    role: 'manager',
+    department: 'analytics',
+  },
+]
+
+async function ensureDevTestUsers() {
+  if (process.env.NODE_ENV !== 'development') return
+
+  const existingUsers = await db.user.count()
+  if (existingUsers > 0) return
+
+  for (const userData of DEV_TEST_USERS) {
+    await db.user.create({
+      data: {
+        email: userData.email,
+        name: userData.name,
+        passwordHash: await bcrypt.hash(userData.password, 10),
+        role: userData.role,
+        department: userData.department,
+        isActive: true,
+        isApproved: true,
+      },
+    })
+  }
+}
+
 export async function POST(request: Request) {
   try {
     // RATE LIMITING: Max 5 login attempts per minute per IP
@@ -25,6 +91,8 @@ export async function POST(request: Request) {
         { status: 400 }
       )
     }
+
+    await ensureDevTestUsers()
 
     // Найти пользователя
     const user = await db.user.findUnique({

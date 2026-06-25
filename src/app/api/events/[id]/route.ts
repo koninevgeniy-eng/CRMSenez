@@ -16,6 +16,7 @@ import {
   hasVersionedScalarChange,
   requiresNewVersion,
 } from '@/lib/event-versioning';
+import { normalizeCustomFieldValues, valuesChanged } from '@/lib/custom-fields';
 
 function isValidDate(d: any): boolean {
   if (!d) return true;
@@ -40,7 +41,17 @@ function valuesMatch(currentValue: unknown, requestedValue: unknown): boolean {
 const eventInclude = {
   speakers: true,
   budgetItems: true,
-  tasks: true,
+  tasks: {
+    include: {
+      assignments: {
+        include: {
+          user: {
+            select: { id: true, name: true, email: true, role: true, department: true },
+          },
+        },
+      },
+    },
+  },
   contacts: true,
   rooms: true,
   meals: true,
@@ -51,6 +62,10 @@ const eventInclude = {
   changeLogs: { orderBy: { createdAt: 'desc' } },
   approvals: { orderBy: { createdAt: 'desc' } },
   versions: { orderBy: { version: 'desc' } },
+  customFieldValues: {
+    include: { field: true },
+    orderBy: { createdAt: 'asc' },
+  },
   assignments: {
     include: {
       user: {
@@ -119,7 +134,7 @@ export async function PUT(
     // Validate the event exists before updating
     const existingEvent = await db.event.findUnique({
       where: { id },
-      include: { budgetItems: true },
+      include: { budgetItems: true, customFieldValues: true },
     });
     if (!existingEvent) {
       return NextResponse.json(
@@ -139,6 +154,7 @@ export async function PUT(
       transfers,
       accommodations,
       payments,
+      customFieldValues,
       changeDescription,
       changedBy,
       ...eventData
@@ -208,6 +224,30 @@ export async function PUT(
       );
     }
     const normalizedBudgetItems = Array.isArray(budgetItems) ? normalizeBudgetItems(budgetItems) : undefined;
+    let normalizedCustomFieldValues: ReturnType<typeof normalizeCustomFieldValues> | undefined;
+    let customFieldDefinitions: Awaited<ReturnType<typeof db.customFieldDefinition.findMany>> = [];
+    if (customFieldValues !== undefined) {
+      const canEditCustomFields = authUser.role === 'admin'
+        || authUser.role === 'manager'
+        || (authUser.department === 'methodology' && existingEvent.ownerId === authUser.id);
+      if (!canEditCustomFields) {
+        return NextResponse.json(
+          { error: 'Недостаточно прав для изменения гибких полей карточки' },
+          { status: 403 }
+        );
+      }
+      customFieldDefinitions = await db.customFieldDefinition.findMany({
+        where: { entityType: 'event', isActive: true },
+        orderBy: [{ sortOrder: 'asc' }, { label: 'asc' }],
+      });
+      normalizedCustomFieldValues = normalizeCustomFieldValues(customFieldDefinitions, customFieldValues, { requireRequired: true });
+      if (!normalizedCustomFieldValues.ok) {
+        return NextResponse.json(
+          { error: normalizedCustomFieldValues.error },
+          { status: 400 }
+        );
+      }
+    }
 
     // Validate payments: non-negative amounts
     if (Array.isArray(payments)) {
@@ -269,9 +309,13 @@ export async function PUT(
     const changeLogs: any[] = [];
     const plannedBudgetChanged = normalizedBudgetItems !== undefined
       && hasPlannedBudgetChange(existingEvent.budgetItems, budgetItems);
+    const customFieldsChanged = normalizedCustomFieldValues?.ok
+      ? valuesChanged(existingEvent.customFieldValues, normalizedCustomFieldValues.values)
+      : false;
     const hasCoreCardChange = hasVersionedScalarChange(existingEvent as unknown as Record<string, unknown>, updateData)
       || speakers !== undefined
-      || plannedBudgetChanged;
+      || plannedBudgetChanged
+      || customFieldsChanged;
     const needsVersionReapproval = hasCoreCardChange && requiresNewVersion(existingEvent.status);
     if (needsVersionReapproval && !canCreateVersionFromEdit(authUser, existingEvent)) {
       return NextResponse.json(
@@ -387,6 +431,22 @@ export async function PUT(
           newValue: 'Обновленный плановый бюджет',
           ...changeLogContext,
         });
+      }
+      if (customFieldsChanged && normalizedCustomFieldValues?.ok) {
+        const previousByField = new Map(existingEvent.customFieldValues.map(item => [item.fieldId, item.value || '']));
+        for (const value of normalizedCustomFieldValues.values) {
+          const definition = customFieldDefinitions.find(field => field.id === value.fieldId);
+          const oldValue = previousByField.get(value.fieldId) || '';
+          if (oldValue === value.value) continue;
+          changeLogs.push({
+            eventId: id,
+            field: `custom:${definition?.key || value.fieldId}`,
+            oldValue,
+            newValue: value.value,
+            ...changeLogContext,
+            comment: changeDescription || `Изменено гибкое поле "${definition?.label || value.fieldId}"`,
+          });
+        }
       }
     }
 
@@ -572,8 +632,25 @@ export async function PUT(
         }
       }
 
+      if (normalizedCustomFieldValues?.ok) {
+        await tx.customFieldValue.deleteMany({ where: { eventId: id } });
+        if (normalizedCustomFieldValues.values.length > 0) {
+          await tx.customFieldValue.createMany({
+            data: normalizedCustomFieldValues.values.map(value => ({
+              eventId: id,
+              fieldId: value.fieldId,
+              value: value.value,
+              valueNumber: value.valueNumber,
+              valueDate: value.valueDate,
+              valueBoolean: value.valueBoolean,
+            })),
+          });
+        }
+      }
+
       const shouldSnapshotVersion = changeLogs.length > 0
-        || Object.values(requestedRelations).some(value => value !== undefined);
+        || Object.values(requestedRelations).some(value => value !== undefined)
+        || normalizedCustomFieldValues !== undefined;
       if (shouldSnapshotVersion) {
         const versionEvent = await tx.event.findUnique({
           where: { id },

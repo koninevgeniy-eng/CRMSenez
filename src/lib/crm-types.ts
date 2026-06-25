@@ -67,7 +67,7 @@ export const STATUS_LABELS: Record<EventStatus, string> = {
   event_finished: 'Мероприятие проведено',
   methodology_actual_budget_review: 'Факт. бюджет у методологии',
   coordination_actual_budget_review: 'Факт. бюджет у координации',
-  actual_budget_approved: 'Факт. бюджет согл.',
+  actual_budget_approved: 'Факт согласован, к закрытию',
   cancel_requested: 'Запрошена отмена',
   cancelled: 'Отменено',
   archived: 'Архив',
@@ -122,6 +122,12 @@ export const BUDGET_CATEGORIES = [
 ];
 
 export const TASK_CATEGORIES = [
+  { value: 'methodology_review', label: 'Проверка методологии' },
+  { value: 'coordination', label: 'Проверка координации' },
+  { value: 'budget_review', label: 'Проверка бюджета' },
+  { value: 'uin', label: 'Присвоение УИН' },
+  { value: 'agd', label: 'Проверка АГД' },
+  { value: 'calendar', label: 'Календарь' },
   { value: 'technical', label: 'Техническое оснащение' },
   { value: 'catering', label: 'Питание' },
   { value: 'pr', label: 'PR и реклама' },
@@ -199,6 +205,8 @@ export interface Task {
   title: string;
   description?: string;
   assignee?: string;
+  assigneeId?: string;
+  assignments?: TaskAssignment[];
   dueDate?: string;
   completed: boolean;
   checklist?: string;
@@ -210,6 +218,7 @@ export interface TaskAssignment {
   taskId: string;
   userId: string;
   assignedBy?: string;
+  user?: UserData;
 }
 
 export interface Contact {
@@ -384,6 +393,37 @@ export interface EventVersion {
   updatedAt: string;
 }
 
+export type CustomFieldType = 'text' | 'textarea' | 'number' | 'date' | 'boolean' | 'select' | 'multiselect';
+
+export interface CustomFieldDefinition {
+  id: string;
+  entityType: string;
+  key: string;
+  label: string;
+  description?: string;
+  fieldType: CustomFieldType;
+  options?: string;
+  department?: string;
+  required: boolean;
+  showInAnalytics: boolean;
+  isActive: boolean;
+  sortOrder: number;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CustomFieldValue {
+  id?: string;
+  eventId?: string;
+  fieldId: string;
+  value: string;
+  valueNumber?: number;
+  valueDate?: string;
+  valueBoolean?: boolean;
+  field?: CustomFieldDefinition;
+}
+
 // Workflow stages for progress indicator
 export const WORKFLOW_STAGES: { key: EventStatus; label: string }[] = [
   { key: 'draft', label: 'Черновик' },
@@ -491,6 +531,7 @@ export interface EventData {
   changeLogs: ChangeLog[];
   approvals?: EventApproval[];
   versions?: EventVersion[];
+  customFieldValues?: CustomFieldValue[];
   payments: Payment[];
   assignments: EventAssignment[];
 }

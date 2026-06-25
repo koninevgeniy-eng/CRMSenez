@@ -12,10 +12,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from '@/hooks/use-toast';
-import { BUDGET_CATEGORIES, ReferenceDictionary } from '@/lib/crm-types';
+import { BUDGET_CATEGORIES, CustomFieldDefinition, ReferenceDictionary } from '@/lib/crm-types';
 import { formatCurrency } from '@/lib/crm-utils';
 import { apiFetch } from '@/lib/api-fetch';
 import { getReferenceOptions } from '@/lib/reference-utils';
+import { CustomFieldsPanel } from '@/components/crm/CustomFieldsPanel';
 
 function CreateEventDialog({ open, onClose, onCreate }: { open: boolean; onClose: () => void; onCreate: () => void }) {
   const [form, setForm] = useState<any>({
@@ -26,10 +27,12 @@ function CreateEventDialog({ open, onClose, onCreate }: { open: boolean; onClose
     coOrganizers: '', vipGuests: '',
     speakers: [], budgetItems: [], tasks: [], contacts: [], rooms: [],
     meals: [], transfers: [], accommodations: [],
+    customFieldValues: {},
   });
   const [createTab, setCreateTab] = useState('main');
   const [validationErrors, setValidationErrors] = useState<{ title?: string; startDate?: string; endDate?: string; program?: string }>({});
   const [dictionaries, setDictionaries] = useState<ReferenceDictionary[]>([]);
+  const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
 
   useEffect(() => {
     if (!open) return;
@@ -38,6 +41,13 @@ function CreateEventDialog({ open, onClose, onCreate }: { open: boolean; onClose
         if (!res.ok) return;
         const data = await res.json();
         setDictionaries(data.dictionaries || []);
+      })
+      .catch(() => {});
+    apiFetch('/api/custom-fields')
+      .then(async res => {
+        if (!res.ok) return;
+        const data = await res.json();
+        setCustomFields(data.fields || []);
       })
       .catch(() => {});
   }, [open]);
@@ -84,6 +94,13 @@ function CreateEventDialog({ open, onClose, onCreate }: { open: boolean; onClose
   const addContact = () => setForm((prev: any) => ({ ...prev, contacts: [...prev.contacts, { role: '', fullName: '', phone: '', type: 'customer' }] }));
   const updateContact = (i: number, field: string, value: any) => setForm((prev: any) => ({ ...prev, contacts: prev.contacts.map((c: any, idx: number) => idx === i ? { ...c, [field]: value } : c) }));
   const removeContact = (i: number) => setForm((prev: any) => ({ ...prev, contacts: prev.contacts.filter((_: any, idx: number) => idx !== i) }));
+  const updateCustomField = (fieldId: string, value: unknown) => setForm((prev: any) => ({
+    ...prev,
+    customFieldValues: {
+      ...(prev.customFieldValues || {}),
+      [fieldId]: value,
+    },
+  }));
 
   const handleCreate = async () => {
     const errors: { title?: string; startDate?: string; endDate?: string; program?: string } = {};
@@ -107,6 +124,7 @@ function CreateEventDialog({ open, onClose, onCreate }: { open: boolean; onClose
           speakers: form.speakers.filter((s: any) => s.fullName),
           budgetItems: form.budgetItems.filter((b: any) => b.category),
           contacts: form.contacts.filter((c: any) => c.fullName),
+          customFieldValues: form.customFieldValues,
         }),
       });
       if (res.ok) {
@@ -121,6 +139,7 @@ function CreateEventDialog({ open, onClose, onCreate }: { open: boolean; onClose
           coOrganizers: '', vipGuests: '',
           speakers: [], budgetItems: [], tasks: [], contacts: [], rooms: [],
           meals: [], transfers: [], accommodations: [],
+          customFieldValues: {},
         });
         setValidationErrors({});
       } else {
@@ -144,6 +163,7 @@ function CreateEventDialog({ open, onClose, onCreate }: { open: boolean; onClose
             <TabsTrigger value="main" className="text-xs whitespace-nowrap">Основное</TabsTrigger>
             <TabsTrigger value="speakers" className="text-xs whitespace-nowrap">Спикеры {form.speakers.length > 0 && <Badge variant="secondary" className="ml-1 text-[10px] h-4 px-1">{form.speakers.length}</Badge>}</TabsTrigger>
             <TabsTrigger value="budget" className="text-xs whitespace-nowrap">Бюджет {form.budgetItems.length > 0 && <Badge variant="secondary" className="ml-1 text-[10px] h-4 px-1">{form.budgetItems.length}</Badge>}</TabsTrigger>
+            <TabsTrigger value="custom" className="text-xs whitespace-nowrap">Гибкие поля {customFields.length > 0 && <Badge variant="secondary" className="ml-1 text-[10px] h-4 px-1">{customFields.length}</Badge>}</TabsTrigger>
             <TabsTrigger value="contacts" className="text-xs whitespace-nowrap">Контакты {form.contacts.length > 0 && <Badge variant="secondary" className="ml-1 text-[10px] h-4 px-1">{form.contacts.length}</Badge>}</TabsTrigger>
           </TabsList>
 
@@ -275,6 +295,15 @@ function CreateEventDialog({ open, onClose, onCreate }: { open: boolean; onClose
                   </div>
                 </div>
               )}
+            </TabsContent>
+
+            <TabsContent value="custom" className="space-y-3 mt-0">
+              <CustomFieldsPanel
+                fields={customFields}
+                values={form.customFieldValues || {}}
+                editing
+                onChange={updateCustomField}
+              />
             </TabsContent>
 
             <TabsContent value="contacts" className="space-y-3 mt-0">
